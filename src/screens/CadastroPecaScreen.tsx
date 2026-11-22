@@ -30,6 +30,7 @@ export default function CadastroPecaScreen({ navigation }: any) {
   const [estado, setEstado] = useState('Bom estado');
   const [tipo, setTipo] = useState<'venda' | 'troca' | 'ambos'>('venda');
   const [preco, setPreco] = useState('');
+  const [observacao, setObservacao] = useState('');
   const [fotos, setFotos] = useState<(string | null)[]>([null, null, null]);
   const [salvando, setSalvando] = useState(false);
 
@@ -58,12 +59,14 @@ export default function CadastroPecaScreen({ navigation }: any) {
     setEstado('Bom estado');
     setTipo('venda');
     setPreco('');
+    setObservacao('');
     setFotos([null, null, null]);
   }
 
   async function salvarPeca() {
     const fotosEscolhidas = fotos.filter(Boolean) as string[];
-    if (!titulo || fotosEscolhidas.length === 0 || (tipo !== 'troca' && !preco)) {
+    const tituloLimpo = titulo.trim();
+    if (!tituloLimpo || fotosEscolhidas.length === 0 || (tipo !== 'troca' && !preco)) {
       Alert.alert('Preencha o nome, escolha ao menos 1 foto' + (tipo !== 'troca' ? ' e o preço.' : '.'));
       return;
     }
@@ -98,18 +101,20 @@ export default function CadastroPecaScreen({ navigation }: any) {
         urlsPublicas.push(urlPublica.publicUrl);
       }
 
+      const observacaoLimpa = observacao.trim();
       const { error: erroInsert } = await supabase.from('pecas').insert({
         dono_id: userId,
-        titulo,
-        categoria,
-        tamanho,
-        marca,
+        titulo: tituloLimpo,
+        categoria: categoria.trim(),
+        tamanho: tamanho.trim(),
+        marca: marca.trim(),
         estado_peca: estado,
         tipo,
         preco: tipo !== 'troca' ? parseFloat(preco.replace(',', '.')) : 0,
         fotos: urlsPublicas,
         latitude,
         longitude,
+        ...(observacaoLimpa ? { observacao: observacaoLimpa } : {}),
       });
       if (erroInsert) throw erroInsert;
 
@@ -127,6 +132,7 @@ export default function CadastroPecaScreen({ navigation }: any) {
     <ScrollView
       style={{ backgroundColor: colors.background }}
       contentContainerStyle={[styles.container, { paddingTop: insets.top + spacing.lg }]}
+      keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.titulo}>
         Adicionar <Text style={{ color: colors.accent }}>Peça</Text>
@@ -225,6 +231,19 @@ export default function CadastroPecaScreen({ navigation }: any) {
         </>
       )}
 
+      <Text style={styles.label}>Observações (opcional)</Text>
+      <TextInput
+        style={[styles.input, styles.inputObservacao]}
+        placeholder="Ex: usado 1 vez, medidas, tecido ou algum detalhe da peça..."
+        placeholderTextColor={colors.placeholder}
+        value={observacao}
+        onChangeText={setObservacao}
+        multiline
+        numberOfLines={4}
+        maxLength={300}
+      />
+      <Text style={styles.contador}>{observacao.length}/300</Text>
+
       {salvando ? (
         <ActivityIndicator size="large" color={colors.black} style={{ marginTop: spacing.lg }} />
       ) : (
@@ -264,6 +283,14 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  inputObservacao: { height: 100, textAlignVertical: 'top' },
+  contador: {
+    fontFamily: fonts.body,
+    fontSize: 11,
+    color: colors.textSecondary,
+    textAlign: 'right',
+    marginTop: 4,
   },
   duasColunas: { flexDirection: 'row', marginTop: 0 },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },

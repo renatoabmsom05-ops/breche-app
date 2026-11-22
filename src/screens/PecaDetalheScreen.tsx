@@ -188,6 +188,13 @@ export default function PecaDetalheScreen({ route, navigation }: any) {
           </View>
         )}
 
+        {!!peca.observacao && (
+          <View style={styles.observacaoBox}>
+            <Text style={styles.observacaoTitulo}>Observações</Text>
+            <Text style={styles.observacaoTexto}>{peca.observacao}</Text>
+          </View>
+        )}
+
         <View style={styles.vendedorRow}>
           <View style={styles.avatar}>
             <Text style={styles.avatarTexto}>{iniciais(peca.usuarios?.nome)}</Text>
@@ -284,6 +291,27 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   avisoVendidoTexto: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textSecondary, textAlign: 'center' },
+  observacaoBox: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  observacaoTitulo: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  observacaoTexto: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textPrimary,
+  },
   vendedorRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.lg },
   avatar: {
     width: 32,

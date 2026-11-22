@@ -28,6 +28,7 @@ type Peca = {
   tamanho: string;
   marca: string | null;
   estado_peca: string | null;
+  observacao?: string | null;
   tipo: 'venda' | 'troca' | 'ambos';
   preco: number;
   fotos: string[];
@@ -369,6 +370,12 @@ export default function SwipeFeedScreen({ navigation }: any) {
                           .join('  •  ')}
                       </Text>
 
+                      {!!peca.observacao && (
+                        <Text style={styles.observacao} numberOfLines={2}>
+                          {peca.observacao}
+                        </Text>
+                      )}
+
                       {peca.tipo !== 'troca' && (
                         <Text style={styles.preco}>R$ {peca.preco?.toFixed(0)}</Text>
                       )}
@@ -613,6 +620,7 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.pill, marginLeft: spacing.sm },
   badgeTexto: { fontFamily: fonts.bodyBold, fontSize: 11 },
   metadados: { fontFamily: fonts.body, fontSize: 13, color: colors.textSecondary, marginTop: 4 },
+  observacao: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.textSecondary, marginTop: 4 },
   preco: { fontFamily: fonts.headingBold, fontSize: 20, color: colors.black, marginTop: 6 },
   vendedorRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm },
   avatar: {
