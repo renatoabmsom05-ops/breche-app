@@ -138,4 +138,4 @@ Você pode instalar o aplicativo diretamente em um dispositivo Android baixando 
 - **Desenvolvimento e Arquitetura:** Renato César
 - **Idealização e Curadoria de Moda Circular:** Létz Pinheiro
 
-Distribuído sob a licença **MIT** — veja o arquivo [`LICENSE`](./LICENSE) para mais detalhes.
+**Todos os direitos reservados** — código disponibilizado publicamente apenas para fins de portfólio e avaliação técnica. Veja o arquivo [`LICENSE`](./LICENSE) para mais detalhes.
