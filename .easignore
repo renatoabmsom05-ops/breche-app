@@ -1,0 +1,37 @@
+# EAS Build upload ignore rules (overrides .gitignore during `eas build`)
+# Keeps .env and google-services.json out of GitHub while still making them
+# available to EAS Build for Android FCM and Supabase EXPO_PUBLIC_* config.
+
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.metro-health-check*
+
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+*.pem
+*.tsbuildinfo
+/ios
+/android
+
+# Never upload Firebase Admin private keys or non-app assets
+*-firebase-adminsdk-*.json
+.env*.local
+instagram/
+Breche-Documentacao-do-App.pdf
+
+# Include local build files that are ignored in .gitignore
+!google-services.json
+!.env

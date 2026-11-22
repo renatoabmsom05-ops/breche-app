@@ -125,13 +125,14 @@ export default function ChatScreen({ route }: any) {
     }
 
     if (outroParticipanteId) {
-      const nomePeca = tituloPeca || 'sua peça';
+      const tituloLimpo = tituloPeca.trim();
+      const nomePeca = tituloLimpo || 'sua peça';
       const remetente = meuNome?.trim();
       const tituloNotificacao = ehPrimeiraMensagem
         ? souComprador
           ? `Alguém perguntou sobre "${nomePeca}" 💬`
           : `Nova conversa sobre "${nomePeca}" 💬`
-        : tituloPeca || 'Nova mensagem 💬';
+        : tituloLimpo || 'Nova mensagem 💬';
       const corpoNotificacao = ehPrimeiraMensagem
         ? remetente
           ? `${remetente}: ${textoLimpo}`

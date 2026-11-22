@@ -11,6 +11,7 @@ import {
   ScrollView,
   Share,
   Animated,
+  Alert,
 } from 'react-native';
 import Swiper from 'react-native-deck-swiper';
 import * as Location from 'expo-location';
@@ -55,14 +56,19 @@ export default function SwipeFeedScreen({ navigation }: any) {
   const [versaoFeed, setVersaoFeed] = useState(0);
   const [atualizando, setAtualizando] = useState(false);
   const [erroFeed, setErroFeed] = useState<string | null>(null);
-  const [cardAtual, setCardAtual] = useState(0);
   const [alturaDeck, setAlturaDeck] = useState(0);
+  const [iconeExplosao, setIconeExplosao] = useState<'❤️' | '⭐'>('❤️');
+  const [avisoEstrela, setAvisoEstrela] = useState<{ texto: string; interesseId: string } | null>(
+    null
+  );
+  const timerAvisoRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Efeito de "coração explodindo" ao curtir
+  // Efeito de explosão (coração ou estrela) ao interagir
   const coracaoEscala = useRef(new Animated.Value(0.3)).current;
   const coracaoOpacidade = useRef(new Animated.Value(0)).current;
 
-  function dispararCoracao() {
+  function dispararExplosao(icone: '❤️' | '⭐') {
+    setIconeExplosao(icone);
     coracaoEscala.setValue(0.3);
     coracaoOpacidade.setValue(1);
     Animated.parallel([
@@ -84,11 +90,13 @@ export default function SwipeFeedScreen({ navigation }: any) {
 
   useEffect(() => {
     carregarFeed();
+    return () => {
+      if (timerAvisoRef.current) clearTimeout(timerAvisoRef.current);
+    };
   }, []);
 
   async function buscarPecas() {
     setErroFeed(null);
-    setCardAtual(0);
     const { status } = await Location.requestForegroundPermissionsAsync();
     let lat = -18.9186;
     let lng = -48.2772;
@@ -126,25 +134,96 @@ export default function SwipeFeedScreen({ navigation }: any) {
   }
 
   async function curtir(peca: Peca) {
-    dispararCoracao();
+    if (!peca) return;
+    dispararExplosao('❤️');
     const { data: userData } = await supabase.auth.getUser();
     const usuarioId = userData.user?.id;
     if (!usuarioId) return;
     await supabase.from('interesses').insert({ usuario_id: usuarioId, peca_id: peca.id });
     if (peca.dono_id && peca.dono_id !== usuarioId) {
+      const tituloLimpo = peca.titulo.trim();
       enviarNotificacao(
         peca.dono_id,
         'Alguém curtiu sua peça! ❤️',
-        `Sua peça "${peca.titulo}" recebeu um novo interesse.`
+        `Sua peça "${tituloLimpo}" recebeu um novo interesse.`
       );
     }
   }
 
-  async function salvar(peca: Peca) {
+  async function amarPeca(peca: Peca) {
+    if (!peca) return;
+    dispararExplosao('⭐');
+
     const { data: userData } = await supabase.auth.getUser();
     const usuarioId = userData.user?.id;
     if (!usuarioId) return;
-    await supabase.from('salvos').upsert({ usuario_id: usuarioId, peca_id: peca.id });
+
+    // Salva nos favoritos como melhor esforço (sem travar se a tabela salvos não existir)
+    try {
+      await supabase.from('salvos').upsert({ usuario_id: usuarioId, peca_id: peca.id });
+    } catch {
+      // ignora erro opcional de salvos
+    }
+
+    if (!peca.dono_id || peca.dono_id === usuarioId) return;
+
+    const { data: meuPerfil } = await supabase
+      .from('usuarios')
+      .select('nome')
+      .eq('id', usuarioId)
+      .single();
+    const remetente = meuPerfil?.nome?.trim();
+
+    // Garante que exista um interesse/conversa entre o usuário e essa peça
+    const { data: interesseExistente } = await supabase
+      .from('interesses')
+      .select('id')
+      .eq('usuario_id', usuarioId)
+      .eq('peca_id', peca.id)
+      .maybeSingle();
+
+    let interesseId = interesseExistente?.id;
+    if (!interesseId) {
+      const { data: novoInteresse, error: erroInteresse } = await supabase
+        .from('interesses')
+        .insert({ usuario_id: usuarioId, peca_id: peca.id })
+        .select('id')
+        .single();
+
+      if (erroInteresse || !novoInteresse?.id) {
+        Alert.alert('Erro', 'Não foi possível iniciar a conversa com o vendedor.');
+        return;
+      }
+      interesseId = novoInteresse.id;
+    }
+
+    const tituloLimpo = peca.titulo.trim();
+    const textoAutomatico = `Oi! ⭐ Amei sua peça "${tituloLimpo}"! Ainda está disponível?`;
+
+    const { error: erroMsg } = await supabase.from('mensagens').insert({
+      interesse_id: interesseId,
+      remetente_id: usuarioId,
+      texto: textoAutomatico,
+    });
+
+    if (erroMsg) {
+      Alert.alert('Erro ao enviar mensagem', erroMsg.message);
+      return;
+    }
+
+    enviarNotificacao(
+      peca.dono_id,
+      `⭐ Alguém amou "${tituloLimpo}"!`,
+      remetente ? `${remetente}: ${textoAutomatico}` : textoAutomatico,
+      { interesseId }
+    );
+
+    if (timerAvisoRef.current) clearTimeout(timerAvisoRef.current);
+    setAvisoEstrela({
+      texto: `⭐ Mensagem enviada para ${peca.dono_nome ?? 'o vendedor'}!`,
+      interesseId,
+    });
+    timerAvisoRef.current = setTimeout(() => setAvisoEstrela(null), 4500);
   }
 
   if (carregando) {
@@ -206,14 +285,14 @@ export default function SwipeFeedScreen({ navigation }: any) {
           style={styles.swiperArea}
           onLayout={(e) => {
             const h = Math.floor(e.nativeEvent.layout.height);
-            if (h > 0 && Math.abs(h - alturaDeck) > 2) {
+            if (h > 0 && Math.abs(h - alturaDeck) > 4) {
               setAlturaDeck(h);
             }
           }}
         >
           {alturaDeck > 0 && (
             <Swiper
-              key={versaoFeed}
+              key={`${versaoFeed}-${alturaDeck}`}
               ref={swiperRef}
               cards={pecas}
               renderCard={(peca: Peca) => {
@@ -308,7 +387,8 @@ export default function SwipeFeedScreen({ navigation }: any) {
                 );
               }}
               onSwipedRight={(index) => curtir(pecas[index])}
-              onSwiped={(index) => setCardAtual(index + 1)}
+              onSwipedTop={(index) => amarPeca(pecas[index])}
+              disableBottomSwipe
               backgroundColor="transparent"
               stackSize={2}
               stackSeparation={8}
@@ -359,6 +439,26 @@ export default function SwipeFeedScreen({ navigation }: any) {
                     },
                   },
                 },
+                top: {
+                  title: 'AMEI! ★',
+                  style: {
+                    label: {
+                      backgroundColor: colors.star,
+                      color: colors.black,
+                      fontFamily: fonts.headingBold,
+                      fontSize: 22,
+                      borderRadius: radius.sm,
+                      padding: 8,
+                      overflow: 'hidden',
+                    },
+                    wrapper: {
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'flex-end',
+                      marginBottom: 24,
+                    },
+                  },
+                },
               }}
             />
           )}
@@ -370,8 +470,25 @@ export default function SwipeFeedScreen({ navigation }: any) {
               { opacity: coracaoOpacidade, transform: [{ scale: coracaoEscala }] },
             ]}
           >
-            <Text style={styles.coracaoExplosaoTexto}>❤️</Text>
+            <Text style={styles.coracaoExplosaoTexto}>{iconeExplosao}</Text>
           </Animated.View>
+        </View>
+      )}
+
+      {avisoEstrela && (
+        <View style={styles.avisoEstrelaBanner}>
+          <Text style={styles.avisoEstrelaTexto} numberOfLines={1}>
+            {avisoEstrela.texto}
+          </Text>
+          <TouchableOpacity
+            onPress={() => {
+              const { interesseId } = avisoEstrela;
+              setAvisoEstrela(null);
+              navigation.navigate('Chat', { interesseId });
+            }}
+          >
+            <Text style={styles.avisoEstrelaLink}>Abrir chat ›</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -391,7 +508,7 @@ export default function SwipeFeedScreen({ navigation }: any) {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.acaoBtn, styles.acaoBtnBorda]}
-            onPress={() => pecas[cardAtual] && salvar(pecas[cardAtual])}
+            onPress={() => swiperRef.current?.swipeTop()}
           >
             <Text style={styles.acaoIconeEstrela}>★</Text>
           </TouchableOpacity>
@@ -520,6 +637,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   coracaoExplosaoTexto: { fontSize: 110 },
+  avisoEstrelaBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.black,
+    borderRadius: radius.pill,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.xs,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  avisoEstrelaTexto: {
+    flex: 1,
+    color: colors.white,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 13,
+  },
+  avisoEstrelaLink: {
+    color: colors.accent,
+    fontFamily: fonts.bodyBold,
+    fontSize: 13,
+  },
   acoesRow: {
     flexDirection: 'row',
     justifyContent: 'center',
