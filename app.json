@@ -34,7 +34,8 @@
           "icon": "./assets/android-icon-monochrome.png",
           "color": "#141414"
         }
-      ]
+      ],
+      "expo-splash-screen"
     ],
     "extra": {
       "eas": {

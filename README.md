@@ -97,7 +97,7 @@ brecho-app/
 
 1. **Clone o repositório e instale as dependências:**
    ```bash
-   git clone https://github.com/SEU-USUARIO/breche-app.git
+   git clone https://github.com/renatoabmsom05-ops/breche-app.git
    cd breche-app
    npm install
    ```
