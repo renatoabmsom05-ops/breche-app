@@ -28,7 +28,7 @@
 
 O **Breché.** é um aplicativo mobile de **moda circular hiperlocal** desenvolvido com **React Native, Expo SDK 57 e Supabase**. Ele conecta pessoas da mesma região interessadas em **trocar**, **vender** ou **garimpar** roupas e calçados parados no guarda-roupa, com uma experiência rápida por gestos de swipe e conversa direta em tempo real.
 
-Idealizado por **Letz Pinheiro** (figurinista) e desenvolvido por **Renato César** (Sistemas para Internet), o projeto foi pensado ponta a ponta: da identidade visual editorial (`Playfair Display` + `Inter`, paleta `#141414` / `#C6F135` / `#F2EFEA`) até infraestrutura em nuvem, notificações push e pipeline de build Android.
+Idealizado por **Létz Pinheiro** (figurinista) e desenvolvido por **Renato César** (Sistemas para Internet), o projeto foi pensado ponta a ponta: da identidade visual editorial (`Playfair Display` + `Inter`, paleta `#141414` / `#C6F135` / `#F2EFEA`) até infraestrutura em nuvem, notificações push e pipeline de build Android.
 
 📄 **Quer ver a apresentação visual completa do produto, identidade e decisões técnicas?**  
 Acesse o documento editorial dentro do repositório: **[`Breche-Documentacao-do-App.pdf`](./Breche-Documentacao-do-App.pdf)**.
@@ -136,6 +136,6 @@ Você pode instalar o aplicativo diretamente em um dispositivo Android baixando 
 ## 👥 Autores & Licença
 
 - **Desenvolvimento e Arquitetura:** Renato César
-- **Idealização e Curadoria de Moda Circular:** Letz Pinheiro
+- **Idealização e Curadoria de Moda Circular:** Létz Pinheiro
 
 Distribuído sob a licença **MIT** — veja o arquivo [`LICENSE`](./LICENSE) para mais detalhes.
