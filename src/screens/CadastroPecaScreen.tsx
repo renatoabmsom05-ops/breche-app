@@ -9,7 +9,9 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -33,6 +35,7 @@ export default function CadastroPecaScreen({ navigation }: any) {
   const [observacao, setObservacao] = useState('');
   const [fotos, setFotos] = useState<(string | null)[]>([null, null, null]);
   const [salvando, setSalvando] = useState(false);
+  const [modalSucesso, setModalSucesso] = useState(false);
 
   async function escolherFoto(indice: number) {
     const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -118,9 +121,8 @@ export default function CadastroPecaScreen({ navigation }: any) {
       });
       if (erroInsert) throw erroInsert;
 
-      Alert.alert('Peça publicada!');
       limparFormulario();
-      navigation.navigate('Explorar');
+      setModalSucesso(true);
     } catch (erro: any) {
       Alert.alert('Erro ao salvar', erro.message ?? String(erro));
     } finally {
@@ -251,6 +253,37 @@ export default function CadastroPecaScreen({ navigation }: any) {
           <Text style={styles.botaoPublicarTexto}>Publicar peça</Text>
         </TouchableOpacity>
       )}
+
+      <Modal visible={modalSucesso} transparent animationType="fade">
+        <View style={styles.modalFundo}>
+          <View style={styles.modalCartao}>
+            <View style={styles.modalIconeCirculo}>
+              <Ionicons name="checkmark" size={32} color={colors.black} />
+            </View>
+            <Text style={styles.modalTitulo}>Peça no ar! ✨</Text>
+            <Text style={styles.modalSubtitulo}>
+              Sua peça já está visível para quem procura looks perto de você.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.modalBotaoPrimario}
+              onPress={() => {
+                setModalSucesso(false);
+                navigation.navigate('Explorar');
+              }}
+            >
+              <Text style={styles.modalBotaoPrimarioTexto}>Ver no Explorar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalBotaoSecundario}
+              onPress={() => setModalSucesso(false)}
+            >
+              <Text style={styles.modalBotaoSecundarioTexto}>Publicar outra peça</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -325,4 +358,59 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
   },
   botaoPublicarTexto: { color: colors.white, fontFamily: fonts.bodyBold, fontSize: 16 },
+  modalFundo: {
+    flex: 1,
+    backgroundColor: 'rgba(20,20,20,0.6)',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  modalCartao: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  modalIconeCirculo: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  modalTitulo: {
+    fontFamily: fonts.headingBlack,
+    fontSize: 24,
+    color: colors.black,
+    textAlign: 'center',
+  },
+  modalSubtitulo: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  modalBotaoPrimario: {
+    width: '100%',
+    backgroundColor: colors.black,
+    paddingVertical: spacing.md,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+  },
+  modalBotaoPrimarioTexto: { color: colors.white, fontFamily: fonts.bodyBold, fontSize: 15 },
+  modalBotaoSecundario: {
+    width: '100%',
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.md,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  modalBotaoSecundarioTexto: { color: colors.black, fontFamily: fonts.bodySemiBold, fontSize: 14 },
 });

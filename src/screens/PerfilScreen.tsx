@@ -9,7 +9,9 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Linking,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
@@ -189,8 +191,18 @@ export default function PerfilScreen({ navigation }: any) {
     }
   }
 
-  return (
-    <View style={[styles.container, { paddingTop: insets.top + spacing.lg }]}>
+  function abrirInstagram() {
+    const handle = perfil?.instagram?.trim().replace(/^@/, '');
+    if (!handle) return;
+    Linking.openURL(`https://instagram.com/${handle}`).catch(() =>
+      Alert.alert('Não foi possível abrir o Instagram')
+    );
+  }
+
+  const instagramLimpo = perfil?.instagram?.trim().replace(/^@/, '');
+
+  const cabecalhoLista = (
+    <>
       <View style={styles.topoRow}>
         <Text style={styles.titulo}>Perfil</Text>
       </View>
@@ -208,7 +220,7 @@ export default function PerfilScreen({ navigation }: any) {
             <Text style={styles.avatarEditarTexto}>✎</Text>
           </View>
         </TouchableOpacity>
-        <View style={{ marginLeft: spacing.md }}>
+        <View style={{ flex: 1, marginLeft: spacing.md }}>
           <Text style={styles.nome}>{perfil?.nome ?? '...'}</Text>
           <Text style={styles.email}>{perfil?.email}</Text>
           <Text style={styles.avaliacaoTexto}>
@@ -216,8 +228,20 @@ export default function PerfilScreen({ navigation }: any) {
               ? `⭐ ${mediaAvaliacao.toFixed(1)} (${totalAvaliacoes} avaliaç${totalAvaliacoes === 1 ? 'ão' : 'ões'})`
               : 'Sem avaliações ainda'}
           </Text>
+          {!!instagramLimpo && (
+            <TouchableOpacity style={styles.instaPill} onPress={abrirInstagram}>
+              <Ionicons name="logo-instagram" size={13} color={colors.black} />
+              <Text style={styles.instaTexto}>@{instagramLimpo}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
+
+      {!!perfil?.bio?.trim() && (
+        <View style={styles.bioCard}>
+          <Text style={styles.bioTexto}>{perfil.bio.trim()}</Text>
+        </View>
+      )}
 
       <TouchableOpacity
         style={styles.mensagensBtn}
@@ -229,7 +253,7 @@ export default function PerfilScreen({ navigation }: any) {
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={styles.mensagensBtn}
+        style={[styles.mensagensBtn, { marginTop: spacing.sm }]}
         onPress={() => navigation.navigate('Ajustes')}
       >
         <Text style={styles.mensagensIcone}>⚙️</Text>
@@ -259,36 +283,40 @@ export default function PerfilScreen({ navigation }: any) {
           <Text style={styles.adicionarLink}>+ Adicionar</Text>
         </TouchableOpacity>
       </View>
+    </>
+  );
 
-      {minhasPecas.length === 0 ? (
-        <TouchableOpacity
-          style={styles.pecaVazia}
-          onPress={() => navigation.navigate('Publicar')}
-        >
-          <Text style={{ fontSize: 22, color: colors.textSecondary }}>+</Text>
-          <Text style={styles.pecaVaziaTexto}>Adicionar primeira peça</Text>
-        </TouchableOpacity>
-      ) : (
-        <FlatList
-          data={minhasPecas}
-          keyExtractor={(item) => item.id}
-          numColumns={3}
-          contentContainerStyle={{ paddingHorizontal: spacing.lg }}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.pecaThumbBox}
-              onPress={() => setPecaSelecionada(item)}
-            >
-              <Image source={{ uri: item.fotos?.[0] }} style={styles.pecaThumb} />
-              {item.status === 'vendido' && (
-                <View style={styles.pecaVendidoBadge}>
-                  <Text style={styles.pecaVendidoTexto}>VENDIDO</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          )}
-        />
-      )}
+  return (
+    <View style={[styles.container, { paddingTop: insets.top + spacing.lg }]}>
+      <FlatList
+        data={minhasPecas}
+        keyExtractor={(item) => item.id}
+        numColumns={3}
+        ListHeaderComponent={cabecalhoLista}
+        ListEmptyComponent={
+          <TouchableOpacity
+            style={styles.pecaVazia}
+            onPress={() => navigation.navigate('Publicar')}
+          >
+            <Text style={{ fontSize: 22, color: colors.textSecondary }}>+</Text>
+            <Text style={styles.pecaVaziaTexto}>Adicionar primeira peça</Text>
+          </TouchableOpacity>
+        }
+        contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl }}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={styles.pecaThumbBox}
+            onPress={() => setPecaSelecionada(item)}
+          >
+            <Image source={{ uri: item.fotos?.[0] }} style={styles.pecaThumb} />
+            {item.status === 'vendido' && (
+              <View style={styles.pecaVendidoBadge}>
+                <Text style={styles.pecaVendidoTexto}>VENDIDO</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
+      />
 
       <Modal visible={!!pecaSelecionada} transparent animationType="fade">
         <View style={styles.modalFundo}>
@@ -345,10 +373,10 @@ export default function PerfilScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  topoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.lg },
+  topoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   titulo: { fontFamily: fonts.headingBlack, fontSize: 26, color: colors.black },
   ajustesIcone: { fontSize: 22 },
-  cabecalho: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, marginTop: spacing.lg },
+  cabecalho: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.lg },
   avatar: {
     width: 64,
     height: 64,
@@ -377,29 +405,48 @@ const styles = StyleSheet.create({
   nome: { fontFamily: fonts.headingBold, fontSize: 18, color: colors.black },
   email: { fontFamily: fonts.body, fontSize: 13, color: colors.textSecondary, marginTop: 2 },
   avaliacaoTexto: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textPrimary, marginTop: 4 },
+  instaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 5,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    marginTop: 6,
+  },
+  instaTexto: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.black },
+  bioCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginTop: spacing.md,
+  },
+  bioTexto: { fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: colors.textPrimary },
   mensagensBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.card,
     borderRadius: radius.md,
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     padding: spacing.md,
   },
   mensagensIcone: { fontSize: 18, marginRight: spacing.sm },
   mensagensTexto: { flex: 1, fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.textPrimary },
   mensagensSeta: { fontSize: 20, color: colors.textSecondary },
-  statsRow: { flexDirection: 'row', paddingHorizontal: spacing.lg, marginTop: spacing.lg, gap: spacing.sm },
+  statsRow: { flexDirection: 'row', marginTop: spacing.md, gap: spacing.sm },
   statCard: { flex: 1, backgroundColor: colors.card, borderRadius: radius.md, alignItems: 'center', paddingVertical: spacing.md },
   statIcone: { fontSize: 18, marginBottom: 4 },
   statNumero: { fontFamily: fonts.headingBold, fontSize: 20, color: colors.black },
   statLabel: { fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-  minhasPecasHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.lg, marginTop: spacing.xl },
+  minhasPecasHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.xl, marginBottom: spacing.sm },
   minhasPecasTitulo: { fontFamily: fonts.headingBold, fontSize: 17, color: colors.black },
   adicionarLink: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.black, textDecorationLine: 'underline' },
   pecaVazia: {
-    marginHorizontal: spacing.lg,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: colors.border,

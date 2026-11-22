@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -11,22 +11,48 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { enviarNotificacao } from '../lib/notificacoes';
 import { colors, fonts, spacing, radius } from '../theme';
 
+type PecaResumo = {
+  id: string;
+  titulo: string;
+  foto?: string;
+  preco?: number;
+  tipo?: 'venda' | 'troca' | 'ambos';
+};
+
+const QUEBRA_GELOS = [
+  'Oi! Ainda está disponível?',
+  'Aceita troca nessa peça?',
+  'Quais são as medidas dela?',
+];
+
+function badgeTipo(tipo?: string) {
+  if (tipo === 'troca') return { bg: colors.accent, texto: colors.black, label: 'TROCA' };
+  if (tipo === 'ambos') return { bg: colors.black, texto: colors.white, label: 'TROCA/VENDA' };
+  return { bg: colors.venda, texto: colors.white, label: 'VENDA' };
+}
+
 // navigation.navigate('Chat', { interesseId: '...' })
-export default function ChatScreen({ route }: any) {
+export default function ChatScreen({ route, navigation }: any) {
   const insets = useSafeAreaInsets();
   const { interesseId } = route.params;
+  const flatListRef = useRef<FlatList<any>>(null);
+
   const [mensagens, setMensagens] = useState<any[]>([]);
+  const [carregandoMensagens, setCarregandoMensagens] = useState(true);
   const [texto, setTexto] = useState('');
   const [meuId, setMeuId] = useState<string | null>(null);
   const [meuNome, setMeuNome] = useState<string | null>(null);
   const [outroParticipanteId, setOutroParticipanteId] = useState<string | null>(null);
   const [tituloPeca, setTituloPeca] = useState('');
+  const [pecaInfo, setPecaInfo] = useState<PecaResumo | null>(null);
 
   const [souComprador, setSouComprador] = useState(false);
   const [jaAvaliei, setJaAvaliei] = useState(false);
@@ -52,13 +78,23 @@ export default function ChatScreen({ route }: any) {
 
       const { data: interesse } = await supabase
         .from('interesses')
-        .select('usuario_id, pecas(dono_id, titulo)')
+        .select('usuario_id, pecas(id, dono_id, titulo, fotos, preco, tipo)')
         .eq('id', interesseId)
         .single();
 
       if (interesse) {
-        const donoId = (interesse.pecas as any)?.dono_id;
-        setTituloPeca((interesse.pecas as any)?.titulo ?? '');
+        const peca = interesse.pecas as any;
+        const donoId = peca?.dono_id;
+        setTituloPeca(peca?.titulo ?? '');
+        if (peca?.id) {
+          setPecaInfo({
+            id: peca.id,
+            titulo: peca.titulo ?? 'Peça',
+            foto: peca.fotos?.[0],
+            preco: peca.preco,
+            tipo: peca.tipo,
+          });
+        }
         setOutroParticipanteId(
           meuIdAtual === interesse.usuario_id ? donoId : interesse.usuario_id
         );
@@ -97,20 +133,22 @@ export default function ChatScreen({ route }: any) {
   }, [interesseId]);
 
   async function carregarMensagens() {
+    setCarregandoMensagens(true);
     const { data } = await supabase
       .from('mensagens')
       .select('*')
       .eq('interesse_id', interesseId)
       .order('criado_em', { ascending: true });
     setMensagens(data ?? []);
+    setCarregandoMensagens(false);
   }
 
-  async function enviar() {
-    const textoLimpo = texto.trim();
+  async function enviar(textoCustom?: string) {
+    const textoLimpo = (textoCustom ?? texto).trim();
     if (!textoLimpo || !meuId) return;
 
     const ehPrimeiraMensagem = mensagens.length === 0;
-    setTexto('');
+    if (!textoCustom) setTexto('');
 
     const { error } = await supabase.from('mensagens').insert({
       interesse_id: interesseId,
@@ -120,7 +158,7 @@ export default function ChatScreen({ route }: any) {
 
     if (error) {
       Alert.alert('Erro ao enviar mensagem', error.message);
-      setTexto(textoLimpo);
+      if (!textoCustom) setTexto(textoLimpo);
       return;
     }
 
@@ -169,12 +207,46 @@ export default function ChatScreen({ route }: any) {
     Alert.alert('Obrigado!', 'Sua avaliação foi enviada.');
   }
 
+  const badgePeca = badgeTipo(pecaInfo?.tipo);
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
+      {pecaInfo && (
+        <TouchableOpacity
+          style={styles.pecaHeaderCard}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('PecaDetalhe', { id: pecaInfo.id })}
+        >
+          {pecaInfo.foto ? (
+            <Image source={{ uri: pecaInfo.foto }} style={styles.pecaHeaderFoto} />
+          ) : (
+            <View style={[styles.pecaHeaderFoto, styles.pecaHeaderFotoFallback]}>
+              <Ionicons name="shirt-outline" size={20} color={colors.textSecondary} />
+            </View>
+          )}
+          <View style={{ flex: 1, marginLeft: spacing.sm }}>
+            <Text style={styles.pecaHeaderTitulo} numberOfLines={1}>
+              {pecaInfo.titulo}
+            </Text>
+            <View style={styles.pecaHeaderMeta}>
+              <View style={[styles.pecaBadge, { backgroundColor: badgePeca.bg }]}>
+                <Text style={[styles.pecaBadgeTexto, { color: badgePeca.texto }]}>
+                  {badgePeca.label}
+                </Text>
+              </View>
+              <Text style={styles.pecaHeaderPreco}>
+                {pecaInfo.tipo === 'troca' ? 'Troca' : `R$ ${pecaInfo.preco?.toFixed(0) ?? '0'}`}
+              </Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
+      )}
+
       {souComprador && !jaAvaliei && (
         <TouchableOpacity
           style={styles.avaliarBanner}
@@ -185,9 +257,40 @@ export default function ChatScreen({ route }: any) {
       )}
 
       <FlatList
+        ref={flatListRef}
         data={mensagens}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: spacing.lg }}
+        contentContainerStyle={[
+          { padding: spacing.lg },
+          mensagens.length === 0 && { flexGrow: 1, justifyContent: 'center' },
+        ]}
+        onContentSizeChange={() => {
+          if (mensagens.length > 0) {
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }
+        }}
+        ListEmptyComponent={
+          !carregandoMensagens ? (
+            <View style={styles.vazioBox}>
+              <Text style={styles.vazioTitulo}>Comece a conversa ✨</Text>
+              <Text style={styles.vazioSub}>
+                Toque em uma sugestão rápida ou mande sua própria mensagem:
+              </Text>
+              <View style={styles.sugestoesCol}>
+                {QUEBRA_GELOS.map((sugestao) => (
+                  <TouchableOpacity
+                    key={sugestao}
+                    style={styles.sugestaoChip}
+                    onPress={() => enviar(sugestao)}
+                  >
+                    <Text style={styles.sugestaoTexto}>{sugestao}</Text>
+                    <Ionicons name="send" size={13} color={colors.black} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          ) : null
+        }
         renderItem={({ item }) => (
           <View
             style={[
@@ -198,7 +301,7 @@ export default function ChatScreen({ route }: any) {
             <Text
               style={[
                 styles.bolhaTexto,
-                { color: item.remetente_id === meuId ? colors.white : colors.textPrimary },
+                { color: item.remetente_id === meuId ? colors.black : colors.textPrimary },
               ]}
             >
               {item.texto}
@@ -206,6 +309,7 @@ export default function ChatScreen({ route }: any) {
           </View>
         )}
       />
+
       <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
         <TextInput
           style={styles.input}
@@ -214,7 +318,7 @@ export default function ChatScreen({ route }: any) {
           value={texto}
           onChangeText={setTexto}
         />
-        <TouchableOpacity style={styles.botaoEnviar} onPress={enviar}>
+        <TouchableOpacity style={styles.botaoEnviar} onPress={() => enviar()}>
           <Text style={styles.botaoEnviarTexto}>Enviar</Text>
         </TouchableOpacity>
       </View>
@@ -266,16 +370,63 @@ export default function ChatScreen({ route }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  pecaHeaderCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  pecaHeaderFoto: { width: 44, height: 44, borderRadius: radius.sm },
+  pecaHeaderFotoFallback: {
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pecaHeaderTitulo: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.black },
+  pecaHeaderMeta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  pecaBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.pill },
+  pecaBadgeTexto: { fontFamily: fonts.bodyBold, fontSize: 9 },
+  pecaHeaderPreco: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.textSecondary },
   avaliarBanner: {
     backgroundColor: colors.accent,
     paddingVertical: spacing.sm,
     alignItems: 'center',
   },
   avaliarBannerTexto: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.black },
-  bolha: { padding: spacing.sm, borderRadius: radius.md, marginVertical: 4, maxWidth: '75%' },
+  vazioBox: { alignItems: 'center', paddingHorizontal: spacing.md },
+  vazioTitulo: { fontFamily: fonts.headingBold, fontSize: 19, color: colors.black, marginBottom: 4 },
+  vazioSub: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  sugestoesCol: { width: '100%', gap: spacing.sm },
+  sugestaoChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 11,
+  },
+  sugestaoTexto: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.black },
+  bolha: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.md, marginVertical: 4, maxWidth: '78%' },
   bolhaMinha: { backgroundColor: colors.accent, alignSelf: 'flex-end' },
-  bolhaOutro: { backgroundColor: colors.card, alignSelf: 'flex-start' },
-  bolhaTexto: { fontFamily: fonts.body, fontSize: 14 },
+  bolhaOutro: {
+    backgroundColor: colors.card,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  bolhaTexto: { fontFamily: fonts.bodyMedium, fontSize: 14, lineHeight: 20 },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',

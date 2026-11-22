@@ -6,9 +6,12 @@ import { colors, fonts, spacing, radius } from '../theme';
 // Troque pelo link real do seu grupo quando tiver um criado.
 const LINK_COMUNIDADE_WHATSAPP = 'https://chat.whatsapp.com/CqRMHn1Dwz6H77tWynMP3x';
 
-function LinhaAjuste({ icone, texto, onPress, destrutivo }: any) {
+function LinhaAjuste({ icone, texto, onPress, destrutivo, ultimo }: any) {
   return (
-    <TouchableOpacity style={styles.linha} onPress={onPress}>
+    <TouchableOpacity
+      style={[styles.linha, ultimo && { borderBottomWidth: 0 }]}
+      onPress={onPress}
+    >
       <Text style={styles.linhaIcone}>{icone}</Text>
       <Text style={[styles.linhaTexto, destrutivo && { color: '#D64545' }]}>{texto}</Text>
       <Text style={styles.linhaSeta}>›</Text>
@@ -37,6 +40,15 @@ export default function AjustesScreen({ navigation }: any) {
     );
   }
 
+  function abrirNotificacoes() {
+    Linking.openSettings().catch(() =>
+      Alert.alert(
+        'Não foi possível abrir os ajustes',
+        'Abra as configurações do aparelho para gerenciar as notificações do Breché.'
+      )
+    );
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ padding: spacing.lg }}>
       <Text style={styles.secaoTitulo}>Conta</Text>
@@ -45,27 +57,29 @@ export default function AjustesScreen({ navigation }: any) {
           icone="👤"
           texto="Editar perfil"
           onPress={() => navigation.navigate('EditarPerfil')}
+          ultimo
         />
       </View>
 
       <Text style={styles.secaoTitulo}>Preferências</Text>
       <View style={styles.grupo}>
-        <LinhaAjuste icone="🔔" texto="Notificações" onPress={() => {}} />
+        <LinhaAjuste icone="🔔" texto="Notificações" onPress={abrirNotificacoes} ultimo />
       </View>
 
       <Text style={styles.secaoTitulo}>Comunidade</Text>
       <View style={styles.grupo}>
-        <LinhaAjuste icone="💬" texto="Comunidade no WhatsApp" onPress={abrirComunidade} />
+        <LinhaAjuste icone="💬" texto="Comunidade no WhatsApp" onPress={abrirComunidade} ultimo />
       </View>
 
       <Text style={styles.secaoTitulo}>Sobre</Text>
       <View style={styles.grupo}>
+        <LinhaAjuste icone="✨" texto="Rever tutorial" onPress={() => navigation.navigate('Tutorial')} />
         <LinhaAjuste icone="ℹ️" texto="Sobre o Breché" onPress={() => navigation.navigate('Sobre')} />
-        <LinhaAjuste icone="📄" texto="Termos de uso" onPress={() => navigation.navigate('Termos')} />
+        <LinhaAjuste icone="📄" texto="Termos de uso" onPress={() => navigation.navigate('Termos')} ultimo />
       </View>
 
-      <View style={styles.grupo}>
-        <LinhaAjuste icone="🚪" texto="Sair da conta" onPress={sair} destrutivo />
+      <View style={[styles.grupo, { marginTop: spacing.lg }]}>
+        <LinhaAjuste icone="🚪" texto="Sair da conta" onPress={sair} destrutivo ultimo />
       </View>
 
       <Text style={styles.versao}>Breché · versão 1.0.0</Text>

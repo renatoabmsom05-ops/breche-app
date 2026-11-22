@@ -74,7 +74,9 @@ export default function LoginScreen({ navigation }: any) {
   const abaAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.sequence([
+    let montado = true;
+
+    Animated.stagger(100, [
       Animated.timing(opacidadeHero, {
         toValue: 1,
         duration: 380,
@@ -86,12 +88,6 @@ export default function LoginScreen({ navigation }: any) {
           toValue: 0,
           duration: 380,
           easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.spring(pontoEscala, {
-          toValue: 1,
-          friction: 4,
-          tension: 120,
           useNativeDriver: true,
         }),
       ]),
@@ -143,15 +139,27 @@ export default function LoginScreen({ navigation }: any) {
       ])
     );
 
+    Animated.spring(pontoEscala, {
+      toValue: 1,
+      friction: 4,
+      tension: 120,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (montado && finished) {
+        pulsoPonto.start();
+      }
+    });
+
     const loops = [
       criarFlutuacao(flutua1, 6, 1700, 0),
       criarFlutuacao(flutua2, 7, 2000, 350),
       criarFlutuacao(flutua3, 5, 1850, 700),
-      pulsoPonto,
     ];
     loops.forEach((l) => l.start());
 
     return () => {
+      montado = false;
+      pulsoPonto.stop();
       loops.forEach((l) => l.stop());
     };
   }, []);

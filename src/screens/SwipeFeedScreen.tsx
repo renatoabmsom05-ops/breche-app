@@ -13,6 +13,7 @@ import {
   Animated,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Swiper from 'react-native-deck-swiper';
 import * as Location from 'expo-location';
 import * as ExpoLinking from 'expo-linking';
@@ -58,6 +59,8 @@ export default function SwipeFeedScreen({ navigation }: any) {
   const [atualizando, setAtualizando] = useState(false);
   const [erroFeed, setErroFeed] = useState<string | null>(null);
   const [alturaDeck, setAlturaDeck] = useState(0);
+  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'troca' | 'venda'>('todos');
+  const [filtroTamanho, setFiltroTamanho] = useState<string | null>(null);
   const [iconeExplosao, setIconeExplosao] = useState<'❤️' | '⭐'>('❤️');
   const [avisoEstrela, setAvisoEstrela] = useState<{ texto: string; interesseId: string } | null>(
     null
@@ -248,19 +251,99 @@ export default function SwipeFeedScreen({ navigation }: any) {
     );
   }
 
+  const pecasFiltradas = pecas.filter((p) => {
+    if (filtroTipo === 'troca' && p.tipo !== 'troca' && p.tipo !== 'ambos') return false;
+    if (filtroTipo === 'venda' && p.tipo !== 'venda' && p.tipo !== 'ambos') return false;
+    if (filtroTamanho && p.tamanho?.trim().toUpperCase() !== filtroTamanho) return false;
+    return true;
+  });
+
+  function limparFiltros() {
+    setFiltroTipo('todos');
+    setFiltroTamanho(null);
+    setSemMaisCards(false);
+  }
+
   return (
     <View style={styles.container}>
       <View style={[styles.topBar, { paddingTop: insets.top + spacing.md }]}>
         <Text style={styles.logo}>
           Breché<Text style={{ color: colors.accent }}>.</Text>
         </Text>
-        <TouchableOpacity style={styles.localBadge} onPress={aoPuxarAtualizar} disabled={atualizando}>
-          {atualizando ? (
-            <ActivityIndicator size="small" color={colors.textSecondary} style={{ paddingVertical: 2 }} />
-          ) : (
-            <Text style={styles.localBadgeTexto}>📍 Perto de você</Text>
-          )}
-        </TouchableOpacity>
+        <View style={styles.topAcoes}>
+          <TouchableOpacity style={styles.localBadge} onPress={aoPuxarAtualizar} disabled={atualizando}>
+            {atualizando ? (
+              <ActivityIndicator size="small" color={colors.textSecondary} style={{ paddingVertical: 2 }} />
+            ) : (
+              <Text style={styles.localBadgeTexto}>📍 Perto de você</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.chatAtalhoBtn}
+            onPress={() => navigation.navigate('Mensagens')}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={18} color={colors.black} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.filtrosWrap}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filtrosScroll}
+        >
+          <TouchableOpacity
+            style={[styles.filtroChip, filtroTipo === 'todos' && !filtroTamanho && styles.filtroChipAtivo]}
+            onPress={limparFiltros}
+          >
+            <Text style={[styles.filtroTexto, filtroTipo === 'todos' && !filtroTamanho && styles.filtroTextoAtivo]}>
+              Tudo
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filtroChip, filtroTipo === 'troca' && styles.filtroChipAtivo]}
+            onPress={() => {
+              setFiltroTipo((t) => (t === 'troca' ? 'todos' : 'troca'));
+              setSemMaisCards(false);
+            }}
+          >
+            <Text style={[styles.filtroTexto, filtroTipo === 'troca' && styles.filtroTextoAtivo]}>
+              Troca
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filtroChip, filtroTipo === 'venda' && styles.filtroChipAtivo]}
+            onPress={() => {
+              setFiltroTipo((t) => (t === 'venda' ? 'todos' : 'venda'));
+              setSemMaisCards(false);
+            }}
+          >
+            <Text style={[styles.filtroTexto, filtroTipo === 'venda' && styles.filtroTextoAtivo]}>
+              Venda
+            </Text>
+          </TouchableOpacity>
+
+          {['P', 'M', 'G', 'GG'].map((tam) => {
+            const ativo = filtroTamanho === tam;
+            return (
+              <TouchableOpacity
+                key={tam}
+                style={[styles.filtroChip, ativo && styles.filtroChipAtivo]}
+                onPress={() => {
+                  setFiltroTamanho((atual) => (atual === tam ? null : tam));
+                  setSemMaisCards(false);
+                }}
+              >
+                <Text style={[styles.filtroTexto, ativo && styles.filtroTextoAtivo]}>
+                  Tam {tam}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {pecas.length === 0 ? (
@@ -270,6 +353,13 @@ export default function SwipeFeedScreen({ navigation }: any) {
             <Text style={{ color: colors.textSecondary, fontFamily: fonts.bodyMedium }}>
               Recarregar
             </Text>
+          </TouchableOpacity>
+        </View>
+      ) : pecasFiltradas.length === 0 ? (
+        <View style={styles.centro}>
+          <Text style={styles.vazioTexto}>Nenhuma peça encontrada com esse filtro.</Text>
+          <TouchableOpacity onPress={limparFiltros} style={styles.limparFiltroBtn}>
+            <Text style={styles.limparFiltroTexto}>Limpar filtros</Text>
           </TouchableOpacity>
         </View>
       ) : semMaisCards ? (
@@ -293,9 +383,9 @@ export default function SwipeFeedScreen({ navigation }: any) {
         >
           {alturaDeck > 0 && (
             <Swiper
-              key={`${versaoFeed}-${alturaDeck}`}
+              key={`${versaoFeed}-${alturaDeck}-${filtroTipo}-${filtroTamanho ?? 'all'}`}
               ref={swiperRef}
-              cards={pecas}
+              cards={pecasFiltradas}
               renderCard={(peca: Peca) => {
                 if (!peca) return null;
                 return (
@@ -393,8 +483,8 @@ export default function SwipeFeedScreen({ navigation }: any) {
                   </View>
                 );
               }}
-              onSwipedRight={(index) => curtir(pecas[index])}
-              onSwipedTop={(index) => amarPeca(pecas[index])}
+              onSwipedRight={(index) => curtir(pecasFiltradas[index])}
+              onSwipedTop={(index) => amarPeca(pecasFiltradas[index])}
               disableBottomSwipe
               backgroundColor="transparent"
               stackSize={2}
@@ -499,7 +589,7 @@ export default function SwipeFeedScreen({ navigation }: any) {
         </View>
       )}
 
-      {pecas.length > 0 && !semMaisCards && (
+      {pecasFiltradas.length > 0 && !semMaisCards && (
         <View style={styles.acoesRow}>
           <TouchableOpacity
             style={[styles.acaoBtn, styles.acaoBtnBorda]}
@@ -576,6 +666,41 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   localBadgeTexto: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textSecondary },
+  topAcoes: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  chatAtalhoBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filtrosWrap: { paddingBottom: spacing.sm },
+  filtrosScroll: { paddingHorizontal: spacing.lg, gap: 8 },
+  filtroChip: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+  },
+  filtroChipAtivo: {
+    backgroundColor: colors.black,
+    borderColor: colors.black,
+  },
+  filtroTexto: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textSecondary },
+  filtroTextoAtivo: { fontFamily: fonts.bodyBold, color: colors.accent },
+  limparFiltroBtn: {
+    marginTop: spacing.md,
+    backgroundColor: colors.black,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+  },
+  limparFiltroTexto: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.white },
   swiperArea: { flex: 1 },
   card: {
     flex: 1,

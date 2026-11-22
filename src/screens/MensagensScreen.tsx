@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, Image, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
@@ -45,9 +46,35 @@ export default function MensagensScreen({ navigation }: any) {
       mapa.set(item.id, item);
     }
 
-    const combinados = Array.from(mapa.values()).sort(
-      (a, b) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime()
-    );
+    const ids = Array.from(mapa.keys());
+    const ultimasMensagens = new Map<string, { texto: string; criado_em: string }>();
+
+    if (ids.length > 0) {
+      const { data: msgs } = await supabase
+        .from('mensagens')
+        .select('interesse_id, texto, criado_em')
+        .in('interesse_id', ids)
+        .order('criado_em', { ascending: false });
+
+      for (const m of msgs ?? []) {
+        if (!ultimasMensagens.has(m.interesse_id)) {
+          ultimasMensagens.set(m.interesse_id, { texto: m.texto, criado_em: m.criado_em });
+        }
+      }
+    }
+
+    const combinados = Array.from(mapa.values())
+      .map((item) => {
+        const ultima = ultimasMensagens.get(item.id);
+        return {
+          ...item,
+          ultimaMensagem: ultima?.texto ?? null,
+          ultimaAtividade: ultima?.criado_em ?? item.criado_em,
+        };
+      })
+      .sort(
+        (a, b) => new Date(b.ultimaAtividade).getTime() - new Date(a.ultimaAtividade).getTime()
+      );
 
     setItens(combinados);
     setCarregando(false);
@@ -82,7 +109,9 @@ export default function MensagensScreen({ navigation }: any) {
       <Text style={styles.tituloTop}>
         Suas <Text style={{ color: colors.accent }}>Mensagens</Text>
       </Text>
-      <Text style={styles.subtitulo}>{itens.length} conversas</Text>
+      <Text style={styles.subtitulo}>
+        {itens.length} {itens.length === 1 ? 'conversa' : 'conversas'}
+      </Text>
 
       <FlatList
         data={itens}
@@ -90,7 +119,9 @@ export default function MensagensScreen({ navigation }: any) {
         contentContainerStyle={{ padding: spacing.lg }}
         renderItem={({ item }) => {
           const precoOuTroca =
-            item.pecas?.tipo === 'troca' ? 'Troca' : `R$ ${item.pecas?.preco?.toFixed(0)}`;
+            item.pecas?.tipo === 'troca'
+              ? 'Troca'
+              : `R$ ${item.pecas?.preco?.toFixed(0) ?? '0'}`;
           const souDono = item.pecas?.dono_id === meuId;
 
           return (
@@ -99,12 +130,23 @@ export default function MensagensScreen({ navigation }: any) {
               onPress={() => navigation.navigate('Chat', { interesseId: item.id })}
             >
               <Image source={{ uri: item.pecas?.fotos?.[0] }} style={styles.linhaFoto} />
-              <View style={{ flex: 1, marginLeft: spacing.md }}>
-                <Text style={styles.linhaTitulo}>{item.pecas?.titulo}</Text>
-                <Text style={styles.linhaSub}>
-                  {souDono ? `Sua peça • ${precoOuTroca}` : precoOuTroca}
+              <View style={{ flex: 1, marginLeft: spacing.md, marginRight: spacing.sm }}>
+                <View style={styles.linhaTopRow}>
+                  <Text style={styles.linhaTitulo} numberOfLines={1}>
+                    {item.pecas?.titulo}
+                  </Text>
+                  {souDono && (
+                    <View style={styles.suaPecaPill}>
+                      <Text style={styles.suaPecaTexto}>SUA PEÇA</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.linhaPreview} numberOfLines={1}>
+                  {item.ultimaMensagem ?? 'Toque para iniciar a conversa 💬'}
                 </Text>
+                <Text style={styles.linhaSub}>{precoOuTroca}</Text>
               </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.placeholder} />
             </TouchableOpacity>
           );
         }}
@@ -124,8 +166,26 @@ const styles = StyleSheet.create({
   vazioTexto: { fontFamily: fonts.body, fontSize: 14, color: colors.textSecondary, textAlign: 'center', marginBottom: spacing.lg },
   botaoExplorar: { backgroundColor: colors.black, paddingHorizontal: spacing.xl, paddingVertical: spacing.md, borderRadius: radius.pill },
   botaoExplorarTexto: { fontFamily: fonts.bodyBold, color: colors.white },
-  linha: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.sm, marginBottom: spacing.sm },
-  linhaFoto: { width: 56, height: 56, borderRadius: radius.sm },
-  linhaTitulo: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.textPrimary },
-  linhaSub: { fontFamily: fonts.body, fontSize: 13, color: colors.textSecondary, marginTop: 2 },
+  linha: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  linhaFoto: { width: 58, height: 58, borderRadius: radius.sm },
+  linhaTopRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  linhaTitulo: { flex: 1, fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.textPrimary },
+  suaPecaPill: {
+    backgroundColor: colors.accent,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+  },
+  suaPecaTexto: { fontFamily: fonts.bodyBold, fontSize: 9, color: colors.black },
+  linhaPreview: { fontFamily: fonts.body, fontSize: 13, color: colors.textSecondary, marginTop: 3 },
+  linhaSub: { fontFamily: fonts.bodyMedium, fontSize: 11, color: colors.placeholder, marginTop: 2 },
 });
