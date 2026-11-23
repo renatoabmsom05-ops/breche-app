@@ -35,6 +35,14 @@
           "color": "#141414"
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O Breché usa suas fotos para publicar peças e atualizar seu avatar.",
+          "cameraPermission": "O Breché usa a câmera para fotografar peças e seu avatar.",
+          "microphonePermission": false
+        }
+      ],
       "expo-splash-screen"
     ],
     "extra": {

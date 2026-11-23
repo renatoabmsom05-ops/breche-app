@@ -47,10 +47,11 @@ function BotaoAnimado({ onPress, style, children, disabled }: any) {
 
 export default function LoginScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
+  const [nome, setNome] = useState('');
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [mostrarSenha, setMostrarSenha] = useState(false);
-  const [campoFocado, setCampoFocado] = useState<'email' | 'senha' | null>(null);
+  const [campoFocado, setCampoFocado] = useState<'nome' | 'email' | 'senha' | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [modoCadastro, setModoCadastro] = useState(false);
   const [larguraSwitch, setLarguraSwitch] = useState(0);
@@ -199,9 +200,21 @@ export default function LoginScreen({ navigation }: any) {
 
     const { data: usuario } = await supabase
       .from('usuarios')
-      .select('viu_tutorial')
+      .select('viu_tutorial, nome')
       .eq('id', data.user.id)
-      .single();
+      .maybeSingle();
+
+    const nomeMetadata = data.user.user_metadata?.nome;
+    if (!usuario?.nome && typeof nomeMetadata === 'string' && nomeMetadata.trim()) {
+      try {
+        await supabase
+          .from('usuarios')
+          .update({ nome: nomeMetadata.trim() })
+          .eq('id', data.user.id);
+      } catch {
+        // segue fluxo mesmo se atualização falhar
+      }
+    }
 
     setCarregando(false);
     navigation.replace(usuario?.viu_tutorial ? 'Main' : 'Tutorial');
@@ -209,21 +222,45 @@ export default function LoginScreen({ navigation }: any) {
   }
 
   async function cadastrar() {
+    const nomeLimpo = nome.trim();
     const emailLimpo = email.trim();
-    if (!emailLimpo || !senha) {
-      Alert.alert('Preencha e-mail e senha para criar sua conta.');
+    if (!nomeLimpo || !emailLimpo || !senha) {
+      Alert.alert('Preencha seu nome, e-mail e senha para criar sua conta.');
+      return;
+    }
+    if (senha.length < 6) {
+      Alert.alert('A senha precisa ter pelo menos 6 caracteres.');
       return;
     }
 
     setCarregando(true);
-    const { error } = await supabase.auth.signUp({ email: emailLimpo, password: senha });
+    const { data, error } = await supabase.auth.signUp({
+      email: emailLimpo,
+      password: senha,
+      options: { data: { nome: nomeLimpo } },
+    });
     if (error) {
       setCarregando(false);
       Alert.alert('Erro ao cadastrar', error.message);
       return;
     }
+
+    if (data.user?.id) {
+      try {
+        await supabase.from('usuarios').update({ nome: nomeLimpo }).eq('id', data.user.id);
+      } catch {
+        // caso o perfil só exista após confirmação de e-mail, será preenchido no 1º login
+      }
+    }
+
     setCarregando(false);
-    Alert.alert('Conta criada!', 'Agora faça login.');
+    if (data.session) {
+      registrarPushToken();
+      navigation.replace('Tutorial');
+      return;
+    }
+
+    Alert.alert('Conta criada!', 'Agora faça login para começar.');
     setModoCadastro(false);
   }
 
@@ -357,6 +394,26 @@ export default function LoginScreen({ navigation }: any) {
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {modoCadastro && (
+              <View style={[styles.inputBox, campoFocado === 'nome' && styles.inputBoxFocado]}>
+                <Ionicons
+                  name="person-outline"
+                  size={18}
+                  color={campoFocado === 'nome' ? colors.black : colors.placeholder}
+                />
+                <TextInput
+                  style={styles.inputCampo}
+                  placeholder="Seu nome"
+                  placeholderTextColor={colors.placeholder}
+                  autoCapitalize="words"
+                  value={nome}
+                  onChangeText={setNome}
+                  onFocus={() => setCampoFocado('nome')}
+                  onBlur={() => setCampoFocado((atual) => (atual === 'nome' ? null : atual))}
+                />
+              </View>
+            )}
 
             <View style={[styles.inputBox, campoFocado === 'email' && styles.inputBoxFocado]}>
               <Ionicons

@@ -1,11 +1,11 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, fonts, spacing } from '../theme';
+import { colors, fonts, spacing, radius } from '../theme';
 
 function Secao({ titulo, texto }: { titulo: string; texto: string }) {
   return (
-    <View style={{ marginBottom: spacing.lg }}>
+    <View style={styles.card}>
       <Text style={styles.secaoTitulo}>{titulo}</Text>
       <Text style={styles.secaoTexto}>{texto}</Text>
     </View>
@@ -18,10 +18,15 @@ export default function TermosDeUsoScreen() {
   return (
     <ScrollView
       style={{ backgroundColor: colors.background }}
-      contentContainerStyle={[styles.container, { paddingTop: insets.top + spacing.lg }]}
+      contentContainerStyle={[
+        styles.container,
+        { paddingBottom: insets.bottom + spacing.xl },
+      ]}
+      showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.titulo}>Termos de Uso</Text>
-      <Text style={styles.atualizado}>Última atualização: 2026</Text>
+      <View style={styles.pill}>
+        <Text style={styles.pillTexto}>ATUALIZADO EM 2026</Text>
+      </View>
 
       <Secao
         titulo="1. Aceitação dos termos"
@@ -64,9 +69,23 @@ export default function TermosDeUsoScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
-  titulo: { fontFamily: fonts.headingBlack, fontSize: 26, color: colors.black },
-  atualizado: { fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary, marginBottom: spacing.lg },
+  container: { padding: spacing.lg, gap: spacing.sm },
+  pill: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.accent,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    marginBottom: spacing.xs,
+  },
+  pillTexto: { fontFamily: fonts.bodyBold, fontSize: 10, color: colors.black, letterSpacing: 0.8 },
+  card: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+  },
   secaoTitulo: { fontFamily: fonts.headingBold, fontSize: 15, color: colors.black, marginBottom: 4 },
   secaoTexto: { fontFamily: fonts.body, fontSize: 14, lineHeight: 21, color: colors.textPrimary },
 });

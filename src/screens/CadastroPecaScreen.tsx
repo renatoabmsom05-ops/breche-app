@@ -37,14 +37,14 @@ export default function CadastroPecaScreen({ navigation }: any) {
   const [salvando, setSalvando] = useState(false);
   const [modalSucesso, setModalSucesso] = useState(false);
 
-  async function escolherFoto(indice: number) {
-    const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  async function abrirCamera(indice: number) {
+    const permissao = await ImagePicker.requestCameraPermissionsAsync();
     if (!permissao.granted) {
-      Alert.alert('Precisamos de acesso às fotos para continuar.');
+      Alert.alert('Precisamos de acesso à câmera para tirar a foto.');
       return;
     }
-    const resultado = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    const resultado = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
       quality: 0.7,
     });
     if (!resultado.canceled) {
@@ -52,6 +52,37 @@ export default function CadastroPecaScreen({ navigation }: any) {
       novas[indice] = resultado.assets[0].uri;
       setFotos(novas);
     }
+  }
+
+  async function abrirGaleria(indice: number) {
+    const permissao = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissao.granted) {
+      Alert.alert('Precisamos de acesso às fotos para continuar.');
+      return;
+    }
+    const resultado = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+    });
+    if (!resultado.canceled) {
+      const novas = [...fotos];
+      novas[indice] = resultado.assets[0].uri;
+      setFotos(novas);
+    }
+  }
+
+  function escolherFoto(indice: number) {
+    Alert.alert('Adicionar foto', 'Como você quer escolher a foto?', [
+      { text: 'Tirar foto', onPress: () => abrirCamera(indice) },
+      { text: 'Escolher da galeria', onPress: () => abrirGaleria(indice) },
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
+  }
+
+  function removerFoto(indice: number) {
+    const novas = [...fotos];
+    novas[indice] = null;
+    setFotos(novas);
   }
 
   function limparFormulario() {
@@ -69,10 +100,17 @@ export default function CadastroPecaScreen({ navigation }: any) {
   async function salvarPeca() {
     const fotosEscolhidas = fotos.filter(Boolean) as string[];
     const tituloLimpo = titulo.trim();
-    if (!tituloLimpo || fotosEscolhidas.length === 0 || (tipo !== 'troca' && !preco)) {
+    if (!tituloLimpo || fotosEscolhidas.length === 0 || (tipo !== 'troca' && !preco.trim())) {
       Alert.alert('Preencha o nome, escolha ao menos 1 foto' + (tipo !== 'troca' ? ' e o preço.' : '.'));
       return;
     }
+
+    const precoNumero = tipo !== 'troca' ? parseFloat(preco.replace(',', '.')) : 0;
+    if (tipo !== 'troca' && (Number.isNaN(precoNumero) || precoNumero < 0)) {
+      Alert.alert('Preço inválido', 'Digite um valor numérico válido, como 45 ou 45,90.');
+      return;
+    }
+
     setSalvando(true);
 
     try {
@@ -113,7 +151,7 @@ export default function CadastroPecaScreen({ navigation }: any) {
         marca: marca.trim(),
         estado_peca: estado,
         tipo,
-        preco: tipo !== 'troca' ? parseFloat(preco.replace(',', '.')) : 0,
+        preco: precoNumero,
         fotos: urlsPublicas,
         latitude,
         longitude,
@@ -144,16 +182,31 @@ export default function CadastroPecaScreen({ navigation }: any) {
       <Text style={styles.label}>Fotos (até 3)</Text>
       <View style={styles.fotosRow}>
         {[0, 1, 2].map((i) => (
-          <TouchableOpacity key={i} style={styles.fotoSlot} onPress={() => escolherFoto(i)}>
-            {fotos[i] ? (
-              <Image source={{ uri: fotos[i]! }} style={styles.fotoImagem} />
-            ) : (
-              <>
-                <Text style={styles.fotoIcone}>{i === 0 ? '📷' : '+'}</Text>
-                <Text style={styles.fotoLabel}>{i === 0 ? 'Principal' : `Foto ${i + 1}`}</Text>
-              </>
+          <View key={i} style={styles.fotoSlotWrap}>
+            <TouchableOpacity style={styles.fotoSlot} onPress={() => escolherFoto(i)}>
+              {fotos[i] ? (
+                <Image source={{ uri: fotos[i]! }} style={styles.fotoImagem} />
+              ) : (
+                <>
+                  <Ionicons
+                    name={i === 0 ? 'camera-outline' : 'add'}
+                    size={22}
+                    color={i === 0 ? colors.black : colors.textSecondary}
+                  />
+                  <Text style={styles.fotoLabel}>{i === 0 ? 'Principal' : `Foto ${i + 1}`}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            {fotos[i] && (
+              <TouchableOpacity
+                style={styles.removerFotoBtn}
+                onPress={() => removerFoto(i)}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Ionicons name="close" size={13} color={colors.white} />
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
+          </View>
         ))}
       </View>
 
@@ -169,11 +222,23 @@ export default function CadastroPecaScreen({ navigation }: any) {
       <View style={styles.duasColunas}>
         <View style={{ flex: 1 }}>
           <Text style={styles.label}>Tamanho</Text>
-          <TextInput style={styles.input} placeholder="M" value={tamanho} onChangeText={setTamanho} />
+          <TextInput
+            style={styles.input}
+            placeholder="M"
+            placeholderTextColor={colors.placeholder}
+            value={tamanho}
+            onChangeText={setTamanho}
+          />
         </View>
         <View style={{ flex: 1, marginLeft: spacing.md }}>
           <Text style={styles.label}>Marca</Text>
-          <TextInput style={styles.input} placeholder="Ex: Farm" value={marca} onChangeText={setMarca} />
+          <TextInput
+            style={styles.input}
+            placeholder="Ex: Farm"
+            placeholderTextColor={colors.placeholder}
+            value={marca}
+            onChangeText={setMarca}
+          />
         </View>
       </View>
 
@@ -181,6 +246,7 @@ export default function CadastroPecaScreen({ navigation }: any) {
       <TextInput
         style={styles.input}
         placeholder="Ex: tênis, camiseta, jaqueta"
+        placeholderTextColor={colors.placeholder}
         value={categoria}
         onChangeText={setCategoria}
       />
@@ -226,6 +292,7 @@ export default function CadastroPecaScreen({ navigation }: any) {
           <TextInput
             style={styles.input}
             placeholder="0,00"
+            placeholderTextColor={colors.placeholder}
             keyboardType="numeric"
             value={preco}
             onChangeText={setPreco}
@@ -294,9 +361,9 @@ const styles = StyleSheet.create({
   subtitulo: { fontFamily: fonts.body, fontSize: 14, color: colors.textSecondary, marginTop: 4, marginBottom: spacing.lg },
   label: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textPrimary, marginBottom: 6, marginTop: spacing.md },
   fotosRow: { flexDirection: 'row', gap: spacing.sm },
+  fotoSlotWrap: { flex: 1, aspectRatio: 1, position: 'relative' },
   fotoSlot: {
     flex: 1,
-    aspectRatio: 1,
     borderWidth: 1,
     borderStyle: 'dashed',
     borderColor: colors.border,
@@ -307,13 +374,26 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   fotoImagem: { width: '100%', height: '100%' },
-  fotoIcone: { fontSize: 20, color: colors.textSecondary },
   fotoLabel: { fontFamily: fonts.body, fontSize: 11, color: colors.textSecondary, marginTop: 4 },
+  removerFotoBtn: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: colors.black,
+    borderWidth: 2,
+    borderColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   input: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
     padding: spacing.md,
     fontFamily: fonts.body,
+    color: colors.textPrimary,
     borderWidth: 1,
     borderColor: colors.border,
   },

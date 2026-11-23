@@ -1,16 +1,57 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, Image, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  Image,
+  StyleSheet,
+  FlatList,
+  TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { colors, fonts, spacing, radius } from '../theme';
 
+function formatarHorarioResumo(iso?: string) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+
+  const agora = new Date();
+  const mesmoDia =
+    d.getFullYear() === agora.getFullYear() &&
+    d.getMonth() === agora.getMonth() &&
+    d.getDate() === agora.getDate();
+
+  if (mesmoDia) {
+    const h = String(d.getHours()).padStart(2, '0');
+    const m = String(d.getMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
+  }
+
+  const ontem = new Date(agora);
+  ontem.setDate(agora.getDate() - 1);
+  const foiOntem =
+    d.getFullYear() === ontem.getFullYear() &&
+    d.getMonth() === ontem.getMonth() &&
+    d.getDate() === ontem.getDate();
+
+  if (foiOntem) return 'Ontem';
+
+  const dia = String(d.getDate()).padStart(2, '0');
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dia}/${mes}`;
+}
+
 export default function MensagensScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
   const [meuId, setMeuId] = useState<string | null>(null);
   const [itens, setItens] = useState<any[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [atualizando, setAtualizando] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -18,13 +59,13 @@ export default function MensagensScreen({ navigation }: any) {
     }, [])
   );
 
-  async function carregar() {
-    setCarregando(true);
+  async function carregar(mostrarLoading = true) {
+    if (mostrarLoading) setCarregando(true);
     const { data: userData } = await supabase.auth.getUser();
     const usuarioId = userData.user?.id ?? null;
     setMeuId(usuarioId);
     if (!usuarioId) {
-      setCarregando(false);
+      if (mostrarLoading) setCarregando(false);
       return;
     }
 
@@ -77,52 +118,70 @@ export default function MensagensScreen({ navigation }: any) {
       );
 
     setItens(combinados);
-    setCarregando(false);
+    if (mostrarLoading) setCarregando(false);
   }
 
-  if (!carregando && itens.length === 0) {
-    return (
-      <View style={[styles.vazioContainer, { paddingTop: insets.top + spacing.lg }]}>
-        <Text style={styles.tituloTop}>
-          Suas <Text style={{ color: colors.accent }}>Mensagens</Text>
-        </Text>
-        <Text style={styles.subtitulo}>0 conversas</Text>
-        <View style={styles.vazioCentro}>
-          <Text style={styles.coracaoGrande}>💬</Text>
-          <Text style={styles.vazioTitulo}>Nenhuma conversa ainda</Text>
-          <Text style={styles.vazioTexto}>
-            Curta peças no Explorar pra começar a conversar com os vendedores!
-          </Text>
-          <TouchableOpacity
-            style={styles.botaoExplorar}
-            onPress={() => navigation.navigate('Main', { screen: 'Explorar' })}
-          >
-            <Text style={styles.botaoExplorarTexto}>Explorar peças</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
+  async function aoAtualizar() {
+    setAtualizando(true);
+    await carregar(false);
+    setAtualizando(false);
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + spacing.lg }]}>
-      <Text style={styles.tituloTop}>
-        Suas <Text style={{ color: colors.accent }}>Mensagens</Text>
-      </Text>
-      <Text style={styles.subtitulo}>
-        {itens.length} {itens.length === 1 ? 'conversa' : 'conversas'}
-      </Text>
+    <View style={styles.container}>
+      <View style={styles.topoContador}>
+        <Text style={styles.subtitulo}>
+          {itens.length} {itens.length === 1 ? 'conversa' : 'conversas'}
+        </Text>
+      </View>
 
       <FlatList
         data={itens}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: spacing.lg }}
+        refreshControl={
+          <RefreshControl
+            refreshing={atualizando}
+            onRefresh={aoAtualizar}
+            tintColor={colors.black}
+            colors={[colors.black]}
+          />
+        }
+        contentContainerStyle={[
+          {
+            paddingHorizontal: spacing.lg,
+            paddingTop: spacing.xs,
+            paddingBottom: insets.bottom + spacing.lg,
+          },
+          itens.length === 0 && { flexGrow: 1 },
+        ]}
+        ListEmptyComponent={
+          carregando ? (
+            <View style={styles.vazioCentro}>
+              <ActivityIndicator size="large" color={colors.black} />
+            </View>
+          ) : (
+            <View style={styles.vazioCentro}>
+              <Text style={styles.coracaoGrande}>💬</Text>
+              <Text style={styles.vazioTitulo}>Nenhuma conversa ainda</Text>
+              <Text style={styles.vazioTexto}>
+                Curta peças no Explorar pra começar a conversar com os vendedores!
+              </Text>
+              <TouchableOpacity
+                style={styles.botaoExplorar}
+                onPress={() => navigation.navigate('Main', { screen: 'Explorar' })}
+              >
+                <Text style={styles.botaoExplorarTexto}>Explorar peças</Text>
+              </TouchableOpacity>
+            </View>
+          )
+        }
         renderItem={({ item }) => {
           const precoOuTroca =
             item.pecas?.tipo === 'troca'
               ? 'Troca'
               : `R$ ${item.pecas?.preco?.toFixed(0) ?? '0'}`;
           const souDono = item.pecas?.dono_id === meuId;
+          const horario = formatarHorarioResumo(item.ultimaAtividade);
 
           return (
             <TouchableOpacity
@@ -135,16 +194,19 @@ export default function MensagensScreen({ navigation }: any) {
                   <Text style={styles.linhaTitulo} numberOfLines={1}>
                     {item.pecas?.titulo}
                   </Text>
+                  {!!horario && <Text style={styles.linhaHorario}>{horario}</Text>}
+                </View>
+                <Text style={styles.linhaPreview} numberOfLines={1}>
+                  {item.ultimaMensagem ?? 'Toque para iniciar a conversa 💬'}
+                </Text>
+                <View style={styles.linhaMetaRow}>
+                  <Text style={styles.linhaSub}>{precoOuTroca}</Text>
                   {souDono && (
                     <View style={styles.suaPecaPill}>
                       <Text style={styles.suaPecaTexto}>SUA PEÇA</Text>
                     </View>
                   )}
                 </View>
-                <Text style={styles.linhaPreview} numberOfLines={1}>
-                  {item.ultimaMensagem ?? 'Toque para iniciar a conversa 💬'}
-                </Text>
-                <Text style={styles.linhaSub}>{precoOuTroca}</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.placeholder} />
             </TouchableOpacity>
@@ -156,10 +218,9 @@ export default function MensagensScreen({ navigation }: any) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  vazioContainer: { flex: 1, backgroundColor: colors.background },
-  tituloTop: { fontFamily: fonts.headingBlack, fontSize: 28, color: colors.black, paddingHorizontal: spacing.lg },
-  subtitulo: { fontFamily: fonts.body, fontSize: 14, color: colors.textSecondary, paddingHorizontal: spacing.lg, marginTop: 4 },
+  container: { flex: 1, backgroundColor: colors.background, paddingTop: spacing.xs },
+  topoContador: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xs },
+  subtitulo: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textSecondary },
   vazioCentro: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl },
   coracaoGrande: { fontSize: 48, color: colors.accent, marginBottom: spacing.md },
   vazioTitulo: { fontFamily: fonts.headingBold, fontSize: 20, color: colors.black, marginBottom: spacing.sm },
@@ -177,8 +238,11 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   linhaFoto: { width: 58, height: 58, borderRadius: radius.sm },
-  linhaTopRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  linhaTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   linhaTitulo: { flex: 1, fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.textPrimary },
+  linhaHorario: { fontFamily: fonts.bodyMedium, fontSize: 11, color: colors.placeholder },
+  linhaPreview: { fontFamily: fonts.body, fontSize: 13, color: colors.textSecondary, marginTop: 3 },
+  linhaMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4 },
   suaPecaPill: {
     backgroundColor: colors.accent,
     paddingHorizontal: 7,
@@ -186,6 +250,5 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   suaPecaTexto: { fontFamily: fonts.bodyBold, fontSize: 9, color: colors.black },
-  linhaPreview: { fontFamily: fonts.body, fontSize: 13, color: colors.textSecondary, marginTop: 3 },
-  linhaSub: { fontFamily: fonts.bodyMedium, fontSize: 11, color: colors.placeholder, marginTop: 2 },
+  linhaSub: { fontFamily: fonts.bodyMedium, fontSize: 11, color: colors.placeholder },
 });

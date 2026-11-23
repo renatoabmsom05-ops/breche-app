@@ -12,6 +12,7 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,6 +40,15 @@ function badgeTipo(tipo?: string) {
   return { bg: colors.venda, texto: colors.white, label: 'VENDA' };
 }
 
+function formatarHora(iso?: string) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  return `${h}:${m}`;
+}
+
 // navigation.navigate('Chat', { interesseId: '...' })
 export default function ChatScreen({ route, navigation }: any) {
   const insets = useSafeAreaInsets();
@@ -47,7 +57,9 @@ export default function ChatScreen({ route, navigation }: any) {
 
   const [mensagens, setMensagens] = useState<any[]>([]);
   const [carregandoMensagens, setCarregandoMensagens] = useState(true);
+  const [atualizando, setAtualizando] = useState(false);
   const [texto, setTexto] = useState('');
+  const [enviando, setEnviando] = useState(false);
   const [meuId, setMeuId] = useState<string | null>(null);
   const [meuNome, setMeuNome] = useState<string | null>(null);
   const [outroParticipanteId, setOutroParticipanteId] = useState<string | null>(null);
@@ -62,9 +74,12 @@ export default function ChatScreen({ route, navigation }: any) {
   const [enviandoAvaliacao, setEnviandoAvaliacao] = useState(false);
 
   useEffect(() => {
+    let ativo = true;
+
     (async () => {
       const { data } = await supabase.auth.getUser();
       const meuIdAtual = data.user?.id ?? null;
+      if (!ativo) return;
       setMeuId(meuIdAtual);
 
       if (meuIdAtual) {
@@ -72,8 +87,8 @@ export default function ChatScreen({ route, navigation }: any) {
           .from('usuarios')
           .select('nome')
           .eq('id', meuIdAtual)
-          .single();
-        setMeuNome(meuPerfil?.nome ?? null);
+          .maybeSingle();
+        if (ativo) setMeuNome(meuPerfil?.nome ?? null);
       }
 
       const { data: interesse } = await supabase
@@ -82,7 +97,7 @@ export default function ChatScreen({ route, navigation }: any) {
         .eq('id', interesseId)
         .single();
 
-      if (interesse) {
+      if (interesse && ativo) {
         const peca = interesse.pecas as any;
         const donoId = peca?.dono_id;
         setTituloPeca(peca?.titulo ?? '');
@@ -95,17 +110,29 @@ export default function ChatScreen({ route, navigation }: any) {
             tipo: peca.tipo,
           });
         }
-        setOutroParticipanteId(
-          meuIdAtual === interesse.usuario_id ? donoId : interesse.usuario_id
-        );
+
+        const outroId = meuIdAtual === interesse.usuario_id ? donoId : interesse.usuario_id;
+        setOutroParticipanteId(outroId);
         setSouComprador(meuIdAtual === interesse.usuario_id);
+
+        if (outroId) {
+          const { data: outroPerfil } = await supabase
+            .from('usuarios')
+            .select('nome')
+            .eq('id', outroId)
+            .maybeSingle();
+          const nomeOutro = outroPerfil?.nome?.trim();
+          if (ativo && nomeOutro) {
+            navigation.setOptions({ title: nomeOutro });
+          }
+        }
 
         const { data: avaliacaoExistente } = await supabase
           .from('avaliacoes')
           .select('id')
           .eq('interesse_id', interesseId)
           .maybeSingle();
-        setJaAvaliei(!!avaliacaoExistente);
+        if (ativo) setJaAvaliei(!!avaliacaoExistente);
       }
     })();
 
@@ -122,64 +149,88 @@ export default function ChatScreen({ route, navigation }: any) {
           filter: `interesse_id=eq.${interesseId}`,
         },
         (payload) => {
-          setMensagens((atual) => [...atual, payload.new]);
+          setMensagens((atual) =>
+            atual.some((m) => m.id === payload.new.id) ? atual : [...atual, payload.new]
+          );
         }
       )
       .subscribe();
 
     return () => {
+      ativo = false;
       supabase.removeChannel(canal);
     };
   }, [interesseId]);
 
-  async function carregarMensagens() {
-    setCarregandoMensagens(true);
+  async function carregarMensagens(mostrarLoading = true) {
+    if (mostrarLoading) setCarregandoMensagens(true);
     const { data } = await supabase
       .from('mensagens')
       .select('*')
       .eq('interesse_id', interesseId)
       .order('criado_em', { ascending: true });
     setMensagens(data ?? []);
-    setCarregandoMensagens(false);
+    if (mostrarLoading) setCarregandoMensagens(false);
+  }
+
+  async function aoAtualizar() {
+    setAtualizando(true);
+    await carregarMensagens(false);
+    setAtualizando(false);
   }
 
   async function enviar(textoCustom?: string) {
     const textoLimpo = (textoCustom ?? texto).trim();
-    if (!textoLimpo || !meuId) return;
+    if (!textoLimpo || !meuId || enviando) return;
 
+    setEnviando(true);
     const ehPrimeiraMensagem = mensagens.length === 0;
     if (!textoCustom) setTexto('');
 
-    const { error } = await supabase.from('mensagens').insert({
-      interesse_id: interesseId,
-      remetente_id: meuId,
-      texto: textoLimpo,
-    });
+    try {
+      const { data: novaMsg, error } = await supabase
+        .from('mensagens')
+        .insert({
+          interesse_id: interesseId,
+          remetente_id: meuId,
+          texto: textoLimpo,
+        })
+        .select('*')
+        .single();
 
-    if (error) {
-      Alert.alert('Erro ao enviar mensagem', error.message);
-      if (!textoCustom) setTexto(textoLimpo);
-      return;
-    }
+      if (error) {
+        Alert.alert('Erro ao enviar mensagem', error.message);
+        if (!textoCustom) setTexto(textoLimpo);
+        return;
+      }
 
-    if (outroParticipanteId) {
-      const tituloLimpo = tituloPeca.trim();
-      const nomePeca = tituloLimpo || 'sua peça';
-      const remetente = meuNome?.trim();
-      const tituloNotificacao = ehPrimeiraMensagem
-        ? souComprador
-          ? `Alguém perguntou sobre "${nomePeca}" 💬`
-          : `Nova conversa sobre "${nomePeca}" 💬`
-        : tituloLimpo || 'Nova mensagem 💬';
-      const corpoNotificacao = ehPrimeiraMensagem
-        ? remetente
+      if (novaMsg) {
+        setMensagens((atual) =>
+          atual.some((m) => m.id === novaMsg.id) ? atual : [...atual, novaMsg]
+        );
+      }
+
+      if (outroParticipanteId) {
+        const tituloLimpo = tituloPeca.trim();
+        const nomePeca = tituloLimpo || 'sua peça';
+        const remetente = meuNome?.trim();
+        const tituloNotificacao = ehPrimeiraMensagem
+          ? souComprador
+            ? `Alguém perguntou sobre "${nomePeca}" 💬`
+            : `Nova conversa sobre "${nomePeca}" 💬`
+          : tituloLimpo || 'Nova mensagem 💬';
+        const corpoNotificacao = ehPrimeiraMensagem
+          ? remetente
+            ? `${remetente}: ${textoLimpo}`
+            : `Tem alguém perguntando da peça: "${textoLimpo}"`
+          : remetente
           ? `${remetente}: ${textoLimpo}`
-          : `Tem alguém perguntando da peça: "${textoLimpo}"`
-        : remetente
-        ? `${remetente}: ${textoLimpo}`
-        : textoLimpo;
+          : textoLimpo;
 
-      enviarNotificacao(outroParticipanteId, tituloNotificacao, corpoNotificacao, { interesseId });
+        enviarNotificacao(outroParticipanteId, tituloNotificacao, corpoNotificacao, { interesseId });
+      }
+    } finally {
+      setEnviando(false);
     }
   }
 
@@ -208,6 +259,7 @@ export default function ChatScreen({ route, navigation }: any) {
   }
 
   const badgePeca = badgeTipo(pecaInfo?.tipo);
+  const podeEnviar = !!texto.trim() && !enviando;
 
   return (
     <KeyboardAvoidingView
@@ -247,7 +299,7 @@ export default function ChatScreen({ route, navigation }: any) {
         </TouchableOpacity>
       )}
 
-      {souComprador && !jaAvaliei && (
+      {souComprador && !jaAvaliei && mensagens.length > 0 && (
         <TouchableOpacity
           style={styles.avaliarBanner}
           onPress={() => setModalAvaliarVisivel(true)}
@@ -260,6 +312,14 @@ export default function ChatScreen({ route, navigation }: any) {
         ref={flatListRef}
         data={mensagens}
         keyExtractor={(item) => item.id}
+        refreshControl={
+          <RefreshControl
+            refreshing={atualizando}
+            onRefresh={aoAtualizar}
+            tintColor={colors.black}
+            colors={[colors.black]}
+          />
+        }
         contentContainerStyle={[
           { padding: spacing.lg },
           mensagens.length === 0 && { flexGrow: 1, justifyContent: 'center' },
@@ -281,6 +341,7 @@ export default function ChatScreen({ route, navigation }: any) {
                   <TouchableOpacity
                     key={sugestao}
                     style={styles.sugestaoChip}
+                    disabled={enviando}
                     onPress={() => enviar(sugestao)}
                   >
                     <Text style={styles.sugestaoTexto}>{sugestao}</Text>
@@ -291,23 +352,23 @@ export default function ChatScreen({ route, navigation }: any) {
             </View>
           ) : null
         }
-        renderItem={({ item }) => (
-          <View
-            style={[
-              styles.bolha,
-              item.remetente_id === meuId ? styles.bolhaMinha : styles.bolhaOutro,
-            ]}
-          >
-            <Text
-              style={[
-                styles.bolhaTexto,
-                { color: item.remetente_id === meuId ? colors.black : colors.textPrimary },
-              ]}
-            >
-              {item.texto}
-            </Text>
-          </View>
-        )}
+        renderItem={({ item }) => {
+          const minha = item.remetente_id === meuId;
+          const hora = formatarHora(item.criado_em);
+
+          return (
+            <View style={[styles.bolha, minha ? styles.bolhaMinha : styles.bolhaOutro]}>
+              <Text style={[styles.bolhaTexto, { color: minha ? colors.black : colors.textPrimary }]}>
+                {item.texto}
+              </Text>
+              {!!hora && (
+                <Text style={[styles.bolhaHora, { color: minha ? '#3A3A3A' : colors.placeholder }]}>
+                  {hora}
+                </Text>
+              )}
+            </View>
+          );
+        }}
       />
 
       <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
@@ -318,8 +379,16 @@ export default function ChatScreen({ route, navigation }: any) {
           value={texto}
           onChangeText={setTexto}
         />
-        <TouchableOpacity style={styles.botaoEnviar} onPress={() => enviar()}>
-          <Text style={styles.botaoEnviarTexto}>Enviar</Text>
+        <TouchableOpacity
+          style={[styles.botaoEnviar, !podeEnviar && styles.botaoEnviarDesabilitado]}
+          disabled={!podeEnviar}
+          onPress={() => enviar()}
+        >
+          {enviando ? (
+            <ActivityIndicator size="small" color={colors.white} />
+          ) : (
+            <Ionicons name="send" size={16} color={colors.white} />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -418,7 +487,14 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   sugestaoTexto: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.black },
-  bolha: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.md, marginVertical: 4, maxWidth: '78%' },
+  bolha: {
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 7,
+    borderRadius: radius.md,
+    marginVertical: 4,
+    maxWidth: '78%',
+  },
   bolhaMinha: { backgroundColor: colors.accent, alignSelf: 'flex-end' },
   bolhaOutro: {
     backgroundColor: colors.card,
@@ -427,6 +503,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   bolhaTexto: { fontFamily: fonts.bodyMedium, fontSize: 14, lineHeight: 20 },
+  bolhaHora: { fontFamily: fonts.body, fontSize: 10, alignSelf: 'flex-end', marginTop: 3 },
   inputBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -446,15 +523,17 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     marginRight: spacing.sm,
     fontFamily: fonts.body,
+    color: colors.textPrimary,
   },
   botaoEnviar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.black,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.pill,
   },
-  botaoEnviarTexto: { color: colors.white, fontFamily: fonts.bodyBold, fontSize: 13 },
+  botaoEnviarDesabilitado: { opacity: 0.45 },
   modalFundo: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -481,6 +560,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     fontFamily: fonts.body,
+    color: colors.textPrimary,
     marginTop: spacing.sm,
     height: 80,
     textAlignVertical: 'top',

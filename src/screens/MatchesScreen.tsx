@@ -10,6 +10,9 @@ import {
   ScrollView,
   Dimensions,
   Animated,
+  Alert,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -29,6 +32,7 @@ export default function MatchesScreen({ navigation }: any) {
   const [curtidas, setCurtidas] = useState<any[]>([]);
   const [salvos, setSalvos] = useState<any[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const [atualizando, setAtualizando] = useState(false);
   const [fotosAbertas, setFotosAbertas] = useState<string[] | null>(null);
   const [indiceFoto, setIndiceFoto] = useState(0);
   const [larguraSwitch, setLarguraSwitch] = useState(0);
@@ -50,12 +54,12 @@ export default function MatchesScreen({ navigation }: any) {
     }, [])
   );
 
-  async function carregar() {
-    setCarregando(true);
+  async function carregar(mostrarLoading = true) {
+    if (mostrarLoading) setCarregando(true);
     const { data: userData } = await supabase.auth.getUser();
     const usuarioId = userData.user?.id;
     if (!usuarioId) {
-      setCarregando(false);
+      if (mostrarLoading) setCarregando(false);
       return;
     }
 
@@ -77,7 +81,44 @@ export default function MatchesScreen({ navigation }: any) {
       setSalvos([]);
     }
 
-    setCarregando(false);
+    if (mostrarLoading) setCarregando(false);
+  }
+
+  async function aoAtualizar() {
+    setAtualizando(true);
+    await carregar(false);
+    setAtualizando(false);
+  }
+
+  function removerCurtida(item: any) {
+    Alert.alert(
+      'Remover curtida?',
+      `Isso remove "${item.pecas?.titulo ?? 'esta peça'}" dos seus matches e apaga a conversa.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover',
+          style: 'destructive',
+          onPress: async () => {
+            const { error } = await supabase.from('interesses').delete().eq('id', item.id);
+            if (error) {
+              Alert.alert('Erro ao remover', error.message);
+              return;
+            }
+            setCurtidas((atual) => atual.filter((c) => c.id !== item.id));
+          },
+        },
+      ]
+    );
+  }
+
+  async function removerSalvo(item: any) {
+    const { error } = await supabase.from('salvos').delete().eq('id', item.id);
+    if (error) {
+      Alert.alert('Erro ao remover', error.message);
+      return;
+    }
+    setSalvos((atual) => atual.filter((s) => s.id !== item.id));
   }
 
   const larguraAba = Math.max((larguraSwitch - 8) / 2, 0);
@@ -131,44 +172,65 @@ export default function MatchesScreen({ navigation }: any) {
         </TouchableOpacity>
       </View>
 
-      {!carregando && listaAtual.length === 0 ? (
-        <View style={styles.vazioCentro}>
-          <Text style={[styles.coracaoGrande, aba === 'salvos' && { color: colors.star }]}>
-            {aba === 'curtidas' ? '♥' : '★'}
-          </Text>
-          <Text style={styles.vazioTitulo}>
-            {aba === 'curtidas' ? 'Nenhum match ainda' : 'Nenhuma peça salva ainda'}
-          </Text>
-          <Text style={styles.vazioTexto}>
-            {aba === 'curtidas'
-              ? 'Continue curtindo as peças no Explorar pra encontrar seus matches!'
-              : 'Toque na estrela ★ nas peças que você amar para salvar e chamar o vendedor!'}
-          </Text>
-          <TouchableOpacity
-            style={styles.botaoExplorar}
-            onPress={() => navigation.navigate('Explorar')}
-          >
-            <Text style={styles.botaoExplorarTexto}>Explorar peças</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <FlatList
-          data={listaAtual}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ padding: spacing.lg, paddingTop: spacing.sm }}
-          renderItem={({ item }) => {
-            const badge = corBadgeTipo(item.pecas?.tipo);
-            const precoTexto =
-              item.pecas?.tipo === 'troca'
-                ? 'Troca'
-                : `R$ ${item.pecas?.preco?.toFixed(0) ?? '0'}`;
-
-            return (
+      <FlatList
+        data={listaAtual}
+        keyExtractor={(item) => item.id}
+        refreshControl={
+          <RefreshControl
+            refreshing={atualizando}
+            onRefresh={aoAtualizar}
+            tintColor={colors.black}
+            colors={[colors.black]}
+          />
+        }
+        contentContainerStyle={[
+          { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: insets.bottom + spacing.xl },
+          listaAtual.length === 0 && { flexGrow: 1 },
+        ]}
+        ListEmptyComponent={
+          carregando ? (
+            <View style={styles.vazioCentro}>
+              <ActivityIndicator size="large" color={colors.black} />
+            </View>
+          ) : (
+            <View style={styles.vazioCentro}>
+              <Text style={[styles.coracaoGrande, aba === 'salvos' && { color: colors.star }]}>
+                {aba === 'curtidas' ? '♥' : '★'}
+              </Text>
+              <Text style={styles.vazioTitulo}>
+                {aba === 'curtidas' ? 'Nenhum match ainda' : 'Nenhuma peça salva ainda'}
+              </Text>
+              <Text style={styles.vazioTexto}>
+                {aba === 'curtidas'
+                  ? 'Continue curtindo as peças no Explorar pra encontrar seus matches!'
+                  : 'Toque na estrela ★ nas peças que você amar para salvar e chamar o vendedor!'}
+              </Text>
               <TouchableOpacity
-                style={styles.linha}
+                style={styles.botaoExplorar}
+                onPress={() => navigation.navigate('Explorar')}
+              >
+                <Text style={styles.botaoExplorarTexto}>Explorar peças</Text>
+              </TouchableOpacity>
+            </View>
+          )
+        }
+        renderItem={({ item }) => {
+          const badge = corBadgeTipo(item.pecas?.tipo);
+          const precoTexto =
+            item.pecas?.tipo === 'troca'
+              ? 'Troca'
+              : `R$ ${item.pecas?.preco?.toFixed(0) ?? '0'}`;
+
+          return (
+            <View style={styles.linha}>
+              <TouchableOpacity
+                style={styles.linhaEsquerda}
+                activeOpacity={0.85}
                 onPress={() => {
-                  setFotosAbertas(item.pecas?.fotos ?? []);
-                  setIndiceFoto(0);
+                  if (item.pecas?.fotos?.length) {
+                    setFotosAbertas(item.pecas.fotos);
+                    setIndiceFoto(0);
+                  }
                 }}
               >
                 <Image source={{ uri: item.pecas?.fotos?.[0] }} style={styles.linhaFoto} />
@@ -185,7 +247,9 @@ export default function MatchesScreen({ navigation }: any) {
                     <Text style={styles.linhaSub}>{precoTexto}</Text>
                   </View>
                 </View>
+              </TouchableOpacity>
 
+              <View style={styles.linhaAcoes}>
                 {aba === 'curtidas' ? (
                   <TouchableOpacity
                     style={styles.acaoPill}
@@ -205,11 +269,19 @@ export default function MatchesScreen({ navigation }: any) {
                     </TouchableOpacity>
                   )
                 )}
-              </TouchableOpacity>
-            );
-          }}
-        />
-      )}
+
+                <TouchableOpacity
+                  style={styles.removerBtn}
+                  onPress={() => (aba === 'curtidas' ? removerCurtida(item) : removerSalvo(item))}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Ionicons name="close-outline" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        }}
+      />
 
       <Modal visible={!!fotosAbertas} transparent animationType="fade">
         <View style={styles.modalFundo}>
@@ -297,12 +369,14 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     marginBottom: spacing.sm,
   },
+  linhaEsquerda: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   linhaFoto: { width: 58, height: 58, borderRadius: radius.sm },
   linhaTitulo: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.textPrimary },
   linhaMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   miniBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: radius.pill },
   miniBadgeTexto: { fontFamily: fonts.bodyBold, fontSize: 9 },
   linhaSub: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textSecondary },
+  linhaAcoes: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   acaoPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -313,6 +387,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   acaoPillTexto: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.white },
+  removerBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   modalFundo: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center' },
   modalFechar: {
     position: 'absolute',

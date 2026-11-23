@@ -1,5 +1,6 @@
 import 'react-native-url-polyfill/auto';
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import * as ExpoLinking from 'expo-linking';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -7,6 +8,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   useFonts as usePlayfair,
   PlayfairDisplay_700Bold,
@@ -66,22 +68,48 @@ const linking = {
 };
 
 function MainTabs() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: colors.black,
         tabBarInactiveTintColor: colors.placeholder,
-        tabBarLabelStyle: { fontFamily: fonts.bodyMedium, fontSize: 11 },
-        tabBarStyle: { backgroundColor: colors.white, borderTopColor: colors.border },
-        tabBarIcon: ({ color, size }) => {
-          const icones: Record<string, any> = {
-            Explorar: 'shirt',
-            Publicar: 'add-circle',
-            Matches: 'heart',
-            Perfil: 'person',
+        tabBarLabelStyle: { fontFamily: fonts.bodySemiBold, fontSize: 11, marginTop: 2 },
+        tabBarStyle: {
+          backgroundColor: colors.white,
+          borderTopColor: colors.border,
+          height: 62 + insets.bottom,
+          paddingTop: 6,
+          paddingBottom: Math.max(insets.bottom, 8),
+        },
+        tabBarIcon: ({ focused, color }) => {
+          const icones: Record<string, { ativo: any; inativo: any }> = {
+            Explorar: { ativo: 'shirt', inativo: 'shirt-outline' },
+            Publicar: { ativo: 'add-circle', inativo: 'add-circle-outline' },
+            Matches: { ativo: 'heart', inativo: 'heart-outline' },
+            Perfil: { ativo: 'person', inativo: 'person-outline' },
           };
-          return <Ionicons name={icones[route.name]} size={size} color={color} />;
+          const par = icones[route.name] ?? { ativo: 'ellipse', inativo: 'ellipse-outline' };
+          return (
+            <View
+              style={{
+                width: 44,
+                height: 28,
+                borderRadius: 14,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: focused ? colors.accent : 'transparent',
+              }}
+            >
+              <Ionicons
+                name={focused ? par.ativo : par.inativo}
+                size={20}
+                color={focused ? colors.black : color}
+              />
+            </View>
+          );
         },
       })}
     >
@@ -96,14 +124,47 @@ function MainTabs() {
 export default function App() {
   const [playfairCarregada] = usePlayfair({ PlayfairDisplay_700Bold, PlayfairDisplay_900Black });
   const [interCarregada] = useInter({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
+  const [rotaInicial, setRotaInicial] = useState<'Login' | 'Main' | 'Tutorial' | null>(null);
 
   const fontesProntas = playfairCarregada && interCarregada;
+  const appPronto = fontesProntas && rotaInicial !== null;
+
+  useEffect(() => {
+    let ativo = true;
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const userId = data.session?.user?.id;
+        if (userId) {
+          registrarPushToken();
+          const { data: usuario } = await supabase
+            .from('usuarios')
+            .select('viu_tutorial')
+            .eq('id', userId)
+            .maybeSingle();
+          if (ativo) {
+            setRotaInicial(usuario?.viu_tutorial ? 'Main' : 'Tutorial');
+          }
+        } else if (ativo) {
+          setRotaInicial('Login');
+        }
+      } catch {
+        if (ativo) {
+          setRotaInicial('Login');
+        }
+      }
+    })();
+
+    return () => {
+      ativo = false;
+    };
+  }, []);
 
   const aoLayout = useCallback(async () => {
-    if (fontesProntas) {
+    if (appPronto) {
       await SplashScreen.hideAsync();
     }
-  }, [fontesProntas]);
+  }, [appPronto]);
 
   useEffect(() => {
     aoLayout();
@@ -116,18 +177,9 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    // Se o app abrir já logado (sessão salva), registra o token de push de novo.
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        registrarPushToken();
-      }
-    });
-  }, []);
-
   useEffect(() => escutarToqueNotificacao(abrirChatDaNotificacao), [abrirChatDaNotificacao]);
 
-  if (!fontesProntas) {
+  if (!appPronto || !rotaInicial) {
     return null;
   }
 
@@ -142,7 +194,16 @@ export default function App() {
           if (interesseId) abrirChatDaNotificacao(interesseId);
         }}
       >
-        <Stack.Navigator initialRouteName="Login">
+        <Stack.Navigator
+          initialRouteName={rotaInicial}
+          screenOptions={{
+            headerStyle: { backgroundColor: colors.background },
+            headerShadowVisible: false,
+            headerTintColor: colors.black,
+            headerTitleStyle: { fontFamily: fonts.headingBold, fontSize: 19, color: colors.black },
+            contentStyle: { backgroundColor: colors.background },
+          }}
+        >
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RecuperarSenha" component={RecuperarSenhaScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Tutorial" component={TutorialScreen} options={{ headerShown: false }} />

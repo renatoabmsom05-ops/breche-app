@@ -56,6 +56,8 @@ export default function SwipeFeedScreen({ navigation }: any) {
   const [indiceFoto, setIndiceFoto] = useState(0);
   const [semMaisCards, setSemMaisCards] = useState(false);
   const [versaoFeed, setVersaoFeed] = useState(0);
+  const [indiceAtual, setIndiceAtual] = useState(0);
+  const desfazendoRef = useRef(false);
   const [atualizando, setAtualizando] = useState(false);
   const [erroFeed, setErroFeed] = useState<string | null>(null);
   const [alturaDeck, setAlturaDeck] = useState(0);
@@ -116,6 +118,8 @@ export default function SwipeFeedScreen({ navigation }: any) {
       setPecas((data as Peca[]) ?? []);
     }
     setSemMaisCards(false);
+    setIndiceAtual(0);
+    desfazendoRef.current = false;
     setVersaoFeed((v) => v + 1);
   }
 
@@ -143,13 +147,31 @@ export default function SwipeFeedScreen({ navigation }: any) {
     const { data: userData } = await supabase.auth.getUser();
     const usuarioId = userData.user?.id;
     if (!usuarioId) return;
-    await supabase.from('interesses').insert({ usuario_id: usuarioId, peca_id: peca.id });
-    if (peca.dono_id && peca.dono_id !== usuarioId) {
+
+    const { data: existente } = await supabase
+      .from('interesses')
+      .select('id')
+      .eq('usuario_id', usuarioId)
+      .eq('peca_id', peca.id)
+      .maybeSingle();
+
+    let interesseId = existente?.id;
+    if (!interesseId) {
+      const { data: novo } = await supabase
+        .from('interesses')
+        .insert({ usuario_id: usuarioId, peca_id: peca.id })
+        .select('id')
+        .single();
+      interesseId = novo?.id;
+    }
+
+    if (!existente && peca.dono_id && peca.dono_id !== usuarioId) {
       const tituloLimpo = peca.titulo.trim();
       enviarNotificacao(
         peca.dono_id,
         'Alguém curtiu sua peça! ❤️',
-        `Sua peça "${tituloLimpo}" recebeu um novo interesse.`
+        `Sua peça "${tituloLimpo}" recebeu um novo interesse.`,
+        interesseId ? { interesseId } : undefined
       );
     }
   }
@@ -262,6 +284,14 @@ export default function SwipeFeedScreen({ navigation }: any) {
     setFiltroTipo('todos');
     setFiltroTamanho(null);
     setSemMaisCards(false);
+    setIndiceAtual(0);
+    desfazendoRef.current = false;
+  }
+
+  function desfazerCard() {
+    if (indiceAtual <= 0 || desfazendoRef.current) return;
+    desfazendoRef.current = true;
+    swiperRef.current?.swipeBack();
   }
 
   return (
@@ -307,6 +337,8 @@ export default function SwipeFeedScreen({ navigation }: any) {
             onPress={() => {
               setFiltroTipo((t) => (t === 'troca' ? 'todos' : 'troca'));
               setSemMaisCards(false);
+              setIndiceAtual(0);
+              desfazendoRef.current = false;
             }}
           >
             <Text style={[styles.filtroTexto, filtroTipo === 'troca' && styles.filtroTextoAtivo]}>
@@ -319,6 +351,8 @@ export default function SwipeFeedScreen({ navigation }: any) {
             onPress={() => {
               setFiltroTipo((t) => (t === 'venda' ? 'todos' : 'venda'));
               setSemMaisCards(false);
+              setIndiceAtual(0);
+              desfazendoRef.current = false;
             }}
           >
             <Text style={[styles.filtroTexto, filtroTipo === 'venda' && styles.filtroTextoAtivo]}>
@@ -335,6 +369,8 @@ export default function SwipeFeedScreen({ navigation }: any) {
                 onPress={() => {
                   setFiltroTamanho((atual) => (atual === tam ? null : tam));
                   setSemMaisCards(false);
+                  setIndiceAtual(0);
+                  desfazendoRef.current = false;
                 }}
               >
                 <Text style={[styles.filtroTexto, ativo && styles.filtroTextoAtivo]}>
@@ -365,10 +401,16 @@ export default function SwipeFeedScreen({ navigation }: any) {
       ) : semMaisCards ? (
         <View style={styles.centro}>
           <Text style={styles.vazioTexto}>👕 Você já viu tudo por perto!</Text>
-          <TouchableOpacity onPress={aoPuxarAtualizar} style={{ marginTop: spacing.md }}>
-            <Text style={{ color: colors.textSecondary, fontFamily: fonts.bodyMedium, textAlign: 'center' }}>
-              Toque em "📍 Perto de você", no topo, pra procurar de novo
-            </Text>
+          <TouchableOpacity
+            onPress={aoPuxarAtualizar}
+            disabled={atualizando}
+            style={styles.limparFiltroBtn}
+          >
+            {atualizando ? (
+              <ActivityIndicator size="small" color={colors.white} />
+            ) : (
+              <Text style={styles.limparFiltroTexto}>Procurar novamente</Text>
+            )}
           </TouchableOpacity>
         </View>
       ) : (
@@ -483,6 +525,14 @@ export default function SwipeFeedScreen({ navigation }: any) {
                   </View>
                 );
               }}
+              onSwiped={(idx) => {
+                if (desfazendoRef.current) {
+                  desfazendoRef.current = false;
+                  setIndiceAtual(Math.max(0, idx - 1));
+                  return;
+                }
+                setIndiceAtual(idx + 1);
+              }}
               onSwipedRight={(index) => curtir(pecasFiltradas[index])}
               onSwipedTop={(index) => amarPeca(pecasFiltradas[index])}
               disableBottomSwipe
@@ -591,6 +641,21 @@ export default function SwipeFeedScreen({ navigation }: any) {
 
       {pecasFiltradas.length > 0 && !semMaisCards && (
         <View style={styles.acoesRow}>
+          <TouchableOpacity
+            style={[
+              styles.acaoBtnPequeno,
+              styles.acaoBtnBorda,
+              indiceAtual === 0 && { opacity: 0.45 },
+            ]}
+            disabled={indiceAtual === 0}
+            onPress={desfazerCard}
+          >
+            <Ionicons
+              name="arrow-undo"
+              size={18}
+              color={indiceAtual > 0 ? colors.black : colors.placeholder}
+            />
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.acaoBtn, styles.acaoBtnBorda]}
             onPress={() => swiperRef.current?.swipeLeft()}
@@ -798,8 +863,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: spacing.md,
-    gap: spacing.lg,
+    gap: spacing.md,
     zIndex: 10,
+    elevation: 10,
+  },
+  acaoBtnPequeno: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
     elevation: 10,
   },
   acaoBtn: {

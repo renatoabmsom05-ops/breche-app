@@ -10,7 +10,10 @@ import {
   ScrollView,
   Dimensions,
   Share,
+  Alert,
+  Linking,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ExpoLinking from 'expo-linking';
 import { supabase } from '../lib/supabase';
@@ -33,8 +36,11 @@ export default function PecaDetalheScreen({ route, navigation }: any) {
 
   const [carregando, setCarregando] = useState(true);
   const [logado, setLogado] = useState<boolean | null>(null);
+  const [usuarioId, setUsuarioId] = useState<string | null>(null);
   const [peca, setPeca] = useState<any>(null);
-  const [jaCurtiu, setJaCurtiu] = useState(false);
+  const [interesseId, setInteresseId] = useState<string | null>(null);
+  const [mediaVendedor, setMediaVendedor] = useState<number | null>(null);
+  const [totalAvalVendedor, setTotalAvalVendedor] = useState(0);
   const [enviandoInteresse, setEnviandoInteresse] = useState(false);
   const [fotosAbertas, setFotosAbertas] = useState<string[] | null>(null);
   const [indiceFoto, setIndiceFoto] = useState(0);
@@ -45,25 +51,42 @@ export default function PecaDetalheScreen({ route, navigation }: any) {
 
   async function carregar() {
     setCarregando(true);
+    setInteresseId(null);
     const { data: userData } = await supabase.auth.getUser();
-    const usuarioId = userData.user?.id;
-    setLogado(!!usuarioId);
+    const uid = userData.user?.id ?? null;
+    setUsuarioId(uid);
+    setLogado(!!uid);
 
     const { data } = await supabase
       .from('pecas')
-      .select('*, usuarios(nome)')
+      .select('*, usuarios(nome, foto_url, instagram)')
       .eq('id', id)
       .single();
     setPeca(data);
 
-    if (usuarioId && data) {
+    if (data?.dono_id) {
+      const { data: avaliacoes } = await supabase
+        .from('avaliacoes')
+        .select('nota')
+        .eq('avaliado_id', data.dono_id);
+      if (avaliacoes && avaliacoes.length > 0) {
+        const soma = avaliacoes.reduce((acc, a) => acc + a.nota, 0);
+        setMediaVendedor(soma / avaliacoes.length);
+        setTotalAvalVendedor(avaliacoes.length);
+      } else {
+        setMediaVendedor(null);
+        setTotalAvalVendedor(0);
+      }
+    }
+
+    if (uid && data) {
       const { data: interesse } = await supabase
         .from('interesses')
         .select('id')
-        .eq('usuario_id', usuarioId)
+        .eq('usuario_id', uid)
         .eq('peca_id', data.id)
         .maybeSingle();
-      setJaCurtiu(!!interesse);
+      setInteresseId(interesse?.id ?? null);
     }
 
     setCarregando(false);
@@ -71,20 +94,51 @@ export default function PecaDetalheScreen({ route, navigation }: any) {
 
   async function marcarInteresse() {
     const { data: userData } = await supabase.auth.getUser();
-    const usuarioId = userData.user?.id;
-    if (!usuarioId || !peca) return;
+    const uid = userData.user?.id ?? usuarioId;
+    if (!uid || !peca || peca.dono_id === uid || enviandoInteresse) return;
 
     setEnviandoInteresse(true);
-    await supabase.from('interesses').insert({ usuario_id: usuarioId, peca_id: peca.id });
-    if (peca.dono_id !== usuarioId) {
+    const { data: existente } = await supabase
+      .from('interesses')
+      .select('id')
+      .eq('usuario_id', uid)
+      .eq('peca_id', peca.id)
+      .maybeSingle();
+
+    let idFinal = existente?.id ?? null;
+    if (!idFinal) {
+      const { data: novo, error } = await supabase
+        .from('interesses')
+        .insert({ usuario_id: uid, peca_id: peca.id })
+        .select('id')
+        .single();
+
+      if (error || !novo?.id) {
+        setEnviandoInteresse(false);
+        Alert.alert('Erro', error?.message ?? 'Não foi possível registrar seu interesse.');
+        return;
+      }
+      idFinal = novo.id;
+
+      const tituloLimpo = peca.titulo?.trim() || 'sua peça';
       enviarNotificacao(
         peca.dono_id,
         'Alguém curtiu sua peça! ❤️',
-        `Sua peça "${peca.titulo}" recebeu um novo interesse.`
+        `Sua peça "${tituloLimpo}" recebeu um novo interesse.`,
+        { interesseId: idFinal }
       );
     }
-    setJaCurtiu(true);
+
+    setInteresseId(idFinal);
     setEnviandoInteresse(false);
+  }
+
+  function abrirInstagram() {
+    const handle = peca?.usuarios?.instagram?.trim().replace(/^@/, '');
+    if (!handle) return;
+    Linking.openURL(`https://instagram.com/${handle}`).catch(() =>
+      Alert.alert('Não foi possível abrir o Instagram')
+    );
   }
 
   async function compartilhar() {
@@ -95,7 +149,7 @@ export default function PecaDetalheScreen({ route, navigation }: any) {
       await Share.share({
         message: `Olha essa peça no Breché: "${peca.titulo}" (${precoTexto})\n${link}`,
       });
-    } catch (erro) {
+    } catch {
       // cancelado, sem problema
     }
   }
@@ -132,8 +186,14 @@ export default function PecaDetalheScreen({ route, navigation }: any) {
     );
   }
 
+  const instagramLimpo = peca.usuarios?.instagram?.trim().replace(/^@/, '');
+  const ehMinhaPeca = peca.dono_id === usuarioId;
+
   return (
-    <ScrollView style={{ backgroundColor: colors.background }}>
+    <ScrollView
+      style={{ backgroundColor: colors.background }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
+    >
       <View style={styles.imagemBox}>
         <Image source={{ uri: peca.fotos?.[0] }} style={styles.imagem} />
         {peca.fotos?.length > 1 && (
@@ -144,11 +204,11 @@ export default function PecaDetalheScreen({ route, navigation }: any) {
               setIndiceFoto(0);
             }}
           >
-            <Text style={styles.verFotosTexto}>Ver fotos</Text>
+            <Text style={styles.verFotosTexto}>Ver fotos ({peca.fotos.length})</Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity style={styles.compartilharBtn} onPress={compartilhar}>
-          <Text style={{ fontSize: 16 }}>📤</Text>
+          <Ionicons name="share-outline" size={18} color={colors.black} />
         </TouchableOpacity>
       </View>
 
@@ -195,28 +255,61 @@ export default function PecaDetalheScreen({ route, navigation }: any) {
           </View>
         )}
 
-        <View style={styles.vendedorRow}>
+        <View style={styles.vendedorCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarTexto}>{iniciais(peca.usuarios?.nome)}</Text>
+            {peca.usuarios?.foto_url ? (
+              <Image source={{ uri: peca.usuarios.foto_url }} style={styles.avatarFoto} />
+            ) : (
+              <Text style={styles.avatarTexto}>{iniciais(peca.usuarios?.nome)}</Text>
+            )}
           </View>
-          <Text style={styles.vendedorNome}>{peca.usuarios?.nome ?? 'Vendedor'}</Text>
+          <View style={{ flex: 1, marginLeft: spacing.sm }}>
+            <Text style={styles.vendedorNome}>{peca.usuarios?.nome ?? 'Vendedor'}</Text>
+            <View style={styles.vendedorMetaRow}>
+              {mediaVendedor !== null && (
+                <Text style={styles.vendedorNota}>
+                  ⭐ {mediaVendedor.toFixed(1)} ({totalAvalVendedor})
+                </Text>
+              )}
+              {!!instagramLimpo && (
+                <TouchableOpacity style={styles.instaPill} onPress={abrirInstagram}>
+                  <Ionicons name="logo-instagram" size={12} color={colors.black} />
+                  <Text style={styles.instaTexto}>@{instagramLimpo}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         </View>
 
-        {peca.status !== 'vendido' && (
-          <TouchableOpacity
-            style={[styles.botaoPreto, jaCurtiu && { backgroundColor: colors.border }]}
-            onPress={marcarInteresse}
-            disabled={jaCurtiu || enviandoInteresse}
-          >
-            {enviandoInteresse ? (
-              <ActivityIndicator color={colors.white} />
-            ) : (
-              <Text style={[styles.botaoPretoTexto, jaCurtiu && { color: colors.textSecondary }]}>
-                {jaCurtiu ? '✓ Você já curtiu essa peça' : '❤️ Tenho interesse'}
-              </Text>
-            )}
-          </TouchableOpacity>
-        )}
+        {peca.status !== 'vendido' &&
+          (ehMinhaPeca ? (
+            <View style={styles.minhaPecaAviso}>
+              <Text style={styles.minhaPecaTexto}>✨ Esta peça faz parte do seu guarda-roupa</Text>
+            </View>
+          ) : interesseId ? (
+            <View style={{ marginTop: spacing.xl }}>
+              <TouchableOpacity
+                style={styles.botaoConversa}
+                onPress={() => navigation.navigate('Chat', { interesseId })}
+              >
+                <Ionicons name="chatbubble-ellipses" size={18} color={colors.accent} />
+                <Text style={styles.botaoPretoTexto}>Abrir conversa</Text>
+              </TouchableOpacity>
+              <Text style={styles.subtituloCurtiu}>✓ Você já curtiu essa peça</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.botaoPreto}
+              onPress={marcarInteresse}
+              disabled={enviandoInteresse}
+            >
+              {enviandoInteresse ? (
+                <ActivityIndicator color={colors.white} />
+              ) : (
+                <Text style={styles.botaoPretoTexto}>❤️ Tenho interesse</Text>
+              )}
+            </TouchableOpacity>
+          ))}
       </View>
 
       <Modal visible={!!fotosAbertas} transparent animationType="fade">
@@ -312,18 +405,51 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: colors.textPrimary,
   },
-  vendedorRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.lg },
+  vendedorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+  },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: colors.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.sm,
+    overflow: 'hidden',
   },
-  avatarTexto: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.black },
-  vendedorNome: { fontFamily: fonts.bodyMedium, fontSize: 15, color: colors.textPrimary },
+  avatarFoto: { width: '100%', height: '100%' },
+  avatarTexto: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.black },
+  vendedorNome: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.textPrimary },
+  vendedorMetaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  vendedorNota: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textSecondary },
+  instaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.accent,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+  },
+  instaTexto: { fontFamily: fonts.bodyBold, fontSize: 11, color: colors.black },
+  minhaPecaAviso: {
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    marginTop: spacing.xl,
+  },
+  minhaPecaTexto: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.textSecondary },
   botaoPreto: {
     backgroundColor: colors.black,
     padding: spacing.md,
@@ -331,7 +457,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: spacing.xl,
   },
+  botaoConversa: {
+    flexDirection: 'row',
+    gap: 8,
+    backgroundColor: colors.black,
+    padding: spacing.md,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   botaoPretoTexto: { color: colors.white, fontFamily: fonts.bodyBold, fontSize: 16 },
+  subtituloCurtiu: {
+    fontFamily: fonts.body,
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
   modalFundo: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center' },
   modalFechar: {
     position: 'absolute',
